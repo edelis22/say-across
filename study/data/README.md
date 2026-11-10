@@ -1,0 +1,7 @@
+# Dataset notes
+
+`pilot.jsonl` contains 12 synthetic sentence scenarios authored for this prototype, with one item per ordered pair of English, Spanish, Greek, and Japanese. It contains no scraped conversations or participant data. The pilot wording and locale assumptions await bilingual review. It has no gold translations, population sampling weights, or human scores. The fixed UI fixture is separate from study collection.
+
+Each UTF-8 JSONL row contains a stable ID, stratum, provenance and a sentence object. See the [authoring template](../templates/dataset-item.json). Fill `intended_emotion` only for explicitly supplied intent. Record alternative plausible readings and authorship in your private collection notes. The runner records a SHA-256 of the actual dataset file. Keep unrelated prompts and demo examples separate from the sealed confirmatory set. Distinct test data should be authored or obtained with appropriate permission, documented and reviewed for linguistic and cultural diversity.
+
+`emotion-pilot.jsonl` contains 44 synthetic, separately authored emotion detection cases, 11 per language. It includes individual, mixed, neutral and ambiguous cases, four pairs with an identical source sentence in different contexts, and examples with emotional distractors. Gold labels are proposed author judgments pending independent review. The [emotion case template](../templates/emotion-item.json) separates the labels from the text fields passed into the classifier.

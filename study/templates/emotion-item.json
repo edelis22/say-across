@@ -1,0 +1,11 @@
+{
+  "id": "unique-item-id",
+  "language": "eng_Latn",
+  "group": "stable-scenario-family-id",
+  "stratum": "contextual_contrast",
+  "source": "Just what I needed.",
+  "before": "The technician said the last spare part had arrived.",
+  "after": "",
+  "gold": ["joy"],
+  "provenance": "Document authorship, locale, consent or license, and independent annotation."
+}

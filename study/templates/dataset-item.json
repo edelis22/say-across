@@ -1,0 +1,16 @@
+{
+  "id": "replace-with-unique-stable-id",
+  "stratum": "indirect-request",
+  "provenance": "Describe authorship, consent, license, locale and source of context",
+  "sentence": {
+    "source": "Could we move our meeting to Friday?",
+    "source_language": "eng_Latn",
+    "target_language": "jpn_Jpan",
+    "before": "I am asking the manager who scheduled the meeting.",
+    "after": "",
+    "relationship": "supervisor",
+    "locale": "ja-JP",
+    "tone": "preserve",
+    "intended_emotion": ""
+  }
+}

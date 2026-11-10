@@ -1,0 +1,106 @@
+<section id="live-voice" data-max-seconds="{max_seconds}" data-caption-seconds="{caption_seconds}"
+         data-profile-seconds="{profile_seconds}" data-profile-speech-seconds="{profile_speech_seconds}" data-state="ready">
+  <header class="say-brand">
+    <span class="say-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 13v6m5-10v14m5-18v22m5-18v14m5-10v6"/></svg></span>
+    <div><h1>Say Across</h1><p>Speak, read, and listen across {language_count} languages.</p></div>
+  </header>
+
+  <section class="say-card say-captions" aria-labelledby="say-caption-heading">
+    <div class="say-card-head say-caption-head">
+      <h2 id="say-caption-heading">Live captions</h2>
+      <div class="say-caption-controls">
+        <span class="say-tag" data-live="caption-state">Ready</span>
+        <label><input type="checkbox" data-live="caption-toggle" aria-controls="say-caption-display" checked> Show captions</label>
+      </div>
+    </div>
+    <div id="say-caption-display" class="say-caption-screen" data-live="caption-screen" tabindex="0" aria-label="Current captions">
+      <p class="say-caption-placeholder" data-live="caption-empty">Captions appear here when the microphone is on.</p>
+      <div data-live="caption-lines" hidden>
+        <div data-live="caption-translated">
+          <p class="say-caption-label" data-live="caption-target-label">Translation</p>
+          <p class="say-caption-target" data-live="caption-target" dir="auto"></p>
+        </div>
+        <p class="say-caption-error" data-live="caption-error" hidden></p>
+        <div class="say-caption-cue-group" data-live="caption-cue-group" hidden>
+          <p class="say-caption-label">Vocal cues from the original</p>
+          <ul class="say-cues" data-live="caption-cues" role="list"></ul>
+        </div>
+        <div data-live="caption-original">
+          <p class="say-caption-label" data-live="caption-source-label">Original</p>
+          <p class="say-caption-source" data-live="caption-source" dir="auto"></p>
+        </div>
+      </div>
+    </div>
+    <div class="say-announcement" data-live="caption-announce" aria-live="polite" aria-atomic="true"></div>
+  </section>
+
+  <div class="say-layout">
+    <section class="say-card say-capture" aria-label="Live microphone">
+      <div class="say-card-head">
+        <h2>Live microphone</h2><span class="say-pill" data-live="indicator"><i></i>Ready</span>
+      </div>
+      <label class="say-check say-interpreter-mode"><input type="checkbox" data-live="two-way" checked> Two-way interpreter</label>
+      <div class="say-languages">
+        <label><span data-live="source-label">First language</span><select data-live="source">{source_options}</select></label>
+        <button class="say-swap" type="button" data-live="swap" aria-label="Swap languages" title="Swap languages">⇄</button>
+        <label><span data-live="target-label">Second language</span><select data-live="target">{target_options}</select></label>
+      </div>
+      <div class="say-mic-area">
+        <button type="button" class="say-mic" data-live="start" aria-label="Start listening">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="12" y="4" width="8" height="15" rx="4"/><path d="M8 15v1a8 8 0 0 0 16 0v-1m-8 9v4m-4 0h8"/>
+          </svg>
+        </button>
+        <p class="say-status" data-live="status" role="status">Start listening</p>
+        <p class="say-help">Captions update as you speak. Pause to finish the turn.</p>
+        <progress data-live="progress" max="1" value="0" aria-label="Pause countdown" hidden></progress>
+      </div>
+      <div class="say-settings">
+        <label>Playback voice
+          <select data-live="voice">{playback_options}</select>
+        </label>
+        <label>Spoken tone
+          <select data-live="tone">{tone_options}</select>
+        </label>
+        <label>Pause before translation
+          <select data-live="pause"><option value="0.5">0.5 seconds · quick</option><option value="0.75" selected>0.75 seconds</option><option value="1">1 second</option><option value="5">5 seconds</option><option value="7">7 seconds</option><option value="10">10 seconds</option></select>
+        </label>
+        <button type="button" class="say-end" data-live="stop" disabled hidden>Turn mic off</button>
+      </div>
+      <p class="say-help" data-live="same-language" hidden>Same-language sessions use captions only.</p>
+      <p class="say-help say-voice-help">Spoken playback uses pitch, pace, and emphasis from the recording.</p>
+      <details class="say-context say-profile" {profile_visibility}>
+        <summary>Personal voice profile</summary>
+        <p class="say-help">Record {profile_seconds} seconds of your own voice. The sample stays in this tab between turns.</p>
+        <label>Use the profile when I speak<select data-live="profile-language">{source_options}</select></label>
+        <div class="say-profile-actions">
+          <button class="say-end" type="button" data-live="profile-record">Record my voice</button>
+          <button class="say-end" type="button" data-live="profile-cancel" hidden>Cancel</button>
+          <button class="say-end" type="button" data-live="profile-clear" disabled>Clear sample</button>
+        </div>
+        <progress data-live="profile-progress" aria-label="Voice sample recording" max="1" value="0" hidden></progress>
+        <p class="say-help" data-live="profile-prompt" hidden>Try saying “I’m glad we have time to talk today. What should we try next? I think this is a good place to start.”</p>
+        <p class="say-help" data-live="profile-status" role="status">Ready to record a voice sample.</p>
+      </details>
+      <details class="say-context">
+        <summary>Conversation context</summary>
+        <label>Relationship<select data-live="relationship">{relationship_options}</select></label>
+        <label>Situation
+          <input data-live="situation" type="text" maxlength="300" placeholder="For example, backstage before an audition">
+        </label>
+        {remote_option}
+      </details>
+    </section>
+
+    <section class="say-card say-conversation" aria-label="Conversation history">
+      <div class="say-card-head"><h2>Conversation</h2><span class="say-tag">Completed turns</span></div>
+      <div class="say-empty" data-live="empty">
+        <span aria-hidden="true">↗</span><strong>Ready for your first words</strong>
+        <p>Your transcript and translation will appear here.</p>
+      </div>
+      <ol class="say-history" data-live="history" aria-label="Translations"></ol>
+      <audio data-live="player" aria-label="Spoken translation" controls preload="none" hidden></audio>
+    </section>
+  </div>
+  <p class="say-footnote">Up to two minutes per turn <span aria-hidden="true">·</span> Headphones help prevent echo</p>
+</section>

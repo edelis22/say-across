@@ -1,0 +1,3 @@
+mlx==0.32.4
+mlx-whisper==0.4.3
+ctranslate2==4.8.5

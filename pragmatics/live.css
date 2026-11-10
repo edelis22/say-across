@@ -1,0 +1,111 @@
+.gradio-container { background: #f5f7fa !important; }
+.say-tools { max-width: 1000px; margin: 0 auto; }
+#live-voice {
+  color: #14243a;
+  font-family: system-ui, sans-serif;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: clamp(20px, 5vw, 48px) 0 0;
+}
+#live-voice [hidden] { display: none !important; }
+#live-voice p, #live-voice h1, #live-voice h2 { margin: 0; }
+.say-brand { display: flex; align-items: center; gap: 14px; margin: 0 0 26px; }
+.say-brand h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.05; letter-spacing: -.055em; font-weight: 760; }
+.say-brand p { margin-top: 5px !important; color: #50637b; font-size: 15px; }
+.say-mark {
+  width: 54px; height: 54px; flex: 0 0 54px; border-radius: 17px;
+  background: #0b695e; color: #e5fff3; display: grid; place-items: center;
+}
+.say-mark svg { width: 29px; height: 29px; }
+.say-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 16px; }
+.say-card { min-width: 0; border: 1px solid #dde6ec; border-radius: 22px; padding: clamp(16px, 3vw, 24px); background: #fff; box-shadow: 0 4px 18px #14243a0a; }
+.say-card-head { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+.say-card-head h2 { font-size: 17px; font-weight: 720; letter-spacing: -.02em; }
+.say-captions { margin-bottom: 16px; }
+.say-caption-head { flex-wrap: wrap; margin-bottom: 10px; }
+.say-caption-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+#live-voice .say-caption-controls label { display: flex; align-items: center; font-size: 13px; min-height: 32px; }
+#live-voice input[type="checkbox"] { appearance: auto !important; width: 17px; height: 17px; accent-color: #0b695e; }
+#live-voice .say-check { display: flex; align-items: center; min-height: 32px; }
+.say-interpreter-mode { margin-top: 12px; }
+.say-context { margin-top: 10px; border-top: 1px solid #ebeff3; padding-top: 10px; }
+.say-context summary { cursor: pointer; color: #233e58; font-size: 13px; font-weight: 680; }
+.say-context label { margin-top: 8px; }
+#live-voice .say-profile p { margin-top: 8px; }
+.say-profile-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.say-profile progress { width: 100%; height: 6px; accent-color: #0b695e; margin-top: 9px; }
+#live-voice .say-context input[type="text"] { width: 100%; min-height: 39px; padding: 6px 9px;
+  border: 1px solid #d6e1e8; border-radius: 10px; background: #f9fbfd; color: #14243a; }
+.say-caption-screen {
+  background: #14243a; color: #fff; border-radius: 14px; padding: clamp(12px, 3vw, 20px);
+  max-height: 42vh; overflow: auto; overflow-wrap: anywhere;
+}
+.say-caption-placeholder { font-size: 15px; color: #dfedfb; }
+.say-caption-label { color: #bfd9ee; font-size: 12px; font-weight: 680; }
+#live-voice .say-caption-source, #live-voice .say-caption-target { margin-top: 3px; line-height: 1.35; }
+.say-caption-source { color: #dfedfb; font-size: clamp(1rem, 2.4vw, 1.25rem); }
+.say-caption-target { color: #fff; font-size: clamp(1.3rem, 3.7vw, 2rem); font-weight: 690; }
+#live-voice [data-live="caption-translated"]:not([hidden]) ~ [data-live="caption-original"] { margin-top: 12px; }
+#live-voice .say-caption-error { margin-top: 7px; color: #ffdfb7; font-size: 15px; }
+.say-caption-cue-group { margin-top: 12px; }
+#live-voice .say-cues { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 5px 0 0; padding: 0; }
+.say-cues li { display: flex; gap: 7px; border-radius: 8px; padding: 4px 8px; font-size: 13px; }
+.say-caption-screen .say-cues li { background: #28445c; color: #fff; }
+#live-voice .say-caption-screen .say-cues li > * { color: #fff; }
+.say-turn .say-cues li { background: #deebef; color: #14243a; }
+.say-cues time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.say-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0; }
+.say-pill, .say-tag {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  border-radius: 99px; background: #eef4f5; color: #355063; padding: 5px 9px; font-size: 11px; font-weight: 650;
+}
+.say-pill i { width: 7px; height: 7px; background: #7793a2; border-radius: 50%; }
+#live-voice[data-state="listening"] .say-pill i, #live-voice[data-state="waiting"] .say-pill i { background: #07936e; }
+#live-voice[data-state="working"] .say-pill i { background: #be6c19; }
+.say-languages { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 8px; align-items: end; margin-top: 22px; }
+#live-voice label { display: grid; gap: 5px; color: #4b6178; font-size: 12px; font-weight: 650; }
+#live-voice select, .say-swap, .say-end {
+  border: 1px solid #d6e1e8; border-radius: 10px; background: #f9fbfd; color: #14243a;
+  min-height: 39px; padding: 6px 9px; font: inherit;
+}
+#live-voice select { width: 100%; font-size: 14px; font-weight: 650; }
+#live-voice button { cursor: pointer; }
+#live-voice :disabled { cursor: default; opacity: .65; }
+#live-voice :focus-visible { outline: 2px solid #0b695e; outline-offset: 3px; }
+.say-swap { width: 39px; font-size: 20px; }
+.say-mic-area { display: grid; justify-items: center; gap: 9px; text-align: center; min-height: 173px; padding: 19px 3px 13px; }
+.say-mic {
+  width: 64px; height: 64px; border-radius: 50%; border: 0; color: white;
+  display: grid; place-items: center; background: #0b695e; box-shadow: 0 0 0 6px #e6f4f1;
+}
+.say-mic svg { width: 29px; height: 29px; }
+#live-voice .say-mic:disabled { opacity: 1; color: #0b695e; background: #e6f4f1; box-shadow: none; }
+.say-status { font-weight: 720; min-height: 22px; }
+.say-help, .say-empty p, .say-footnote { font-size: 13px; color: #50637b; }
+#live-voice .say-voice-help { margin-top: 8px; }
+.say-mic-area progress { width: min(180px, 90%); height: 6px; accent-color: #0b695e; }
+.say-settings { display: flex; align-items: end; justify-content: space-between; gap: 8px; border-top: 1px solid #ebeff3; padding-top: 12px; }
+.say-end { min-height: 36px; background: #fff; font-size: 12px; white-space: nowrap; }
+.say-conversation { display: flex; flex-direction: column; }
+.say-empty { flex: 1; display: grid; align-content: center; justify-items: center; gap: 7px; text-align: center; min-height: 210px; }
+.say-empty span { color: #0b695e; background: #e6f4f1; display: grid; place-items: center; width: 39px; height: 39px; border-radius: 12px; font-size: 22px; }
+#live-voice .say-history { list-style: none; margin: 14px 0; padding: 0; overflow: auto; max-height: 375px; display: grid; gap: 9px; }
+.say-turn { padding: 11px 13px; border-radius: 11px; background: #f1f7f7; overflow-wrap: anywhere; display: grid; gap: 4px; }
+.say-turn-source, .say-turn-note { color: #50637b; font-size: 12px; }
+.say-turn-target { font-size: 16px; line-height: 1.4; }
+#live-voice audio { width: 100%; margin-top: auto; }
+.say-footnote { text-align: center; margin-top: 14px !important; }
+@media (max-width: 700px) {
+  .say-layout { grid-template-columns: minmax(0,1fr); }
+  .say-empty { min-height: 135px; }
+}
+#live-voice h1, #live-voice h2, #live-voice strong, #live-voice .say-status { color: #14243a; }
+#live-voice .say-mark svg { stroke: #e5fff3 !important; }
+#live-voice .say-mic svg { stroke: #fff !important; }
+#live-voice .say-mic:disabled svg { stroke: #0b695e !important; }
+#live-voice select { appearance: auto; }
+
+.say-settings { flex-wrap: wrap; }
+.say-settings label { flex: 1 1 125px; }
+.say-settings label:first-child { flex-basis: 100%; }

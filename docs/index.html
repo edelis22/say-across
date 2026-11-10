@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore Say Across, a research prototype for tone-aware multilingual interpretation.">
+  <title>Say Across · Research demo</title>
+  <link rel="stylesheet" href="review.css">
+  <script src="review.js" defer></script>
+</head>
+<body>
+  <header class="header shell">
+    <a class="brand" href="#top"><span class="brand-icon" aria-hidden="true">⇄</span> Say Across</a>
+    <nav aria-label="Page sections"><a href="#demo">Walkthrough</a><a href="#method">Research</a><a href="#run">Run the app</a></nav>
+  </header>
+
+  <main id="top" class="shell">
+    <section class="hero" aria-labelledby="title">
+      <div>
+        <p class="eyebrow"><span class="dot" aria-hidden="true"></span> Research prototype</p>
+        <h1 id="title">Speak in the language that feels like you.</h1>
+        <p class="intro">Say Across translates conversations in both directions, shows captions, and uses cues from the original recording to guide spoken delivery.</p>
+        <a class="button primary" href="#demo">Explore a conversation <span aria-hidden="true">↓</span></a>
+      </div>
+      <div class="hero-aside" aria-label="Two-way interpretation">
+        <div class="sound" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <p><strong>12 spoken languages</strong><br>One microphone for both sides</p>
+        <span class="hero-tag">Listen <span aria-hidden="true">→</span> Translate <span aria-hidden="true">→</span> Speak</span>
+      </div>
+    </section>
+
+    <section id="demo" class="section" aria-labelledby="demo-title">
+      <p class="eyebrow">Interactive walkthrough</p>
+      <h2 id="demo-title">Follow both sides of a conversation.</h2>
+      <p class="section-intro">Choose a language pair and step through example translations from the app. Playback uses a voice from your browser.</p>
+      <div class="dialogue">
+        <div class="switch" role="group" aria-label="Example language pair">
+          <button type="button" data-pair="greek" aria-pressed="true">Greek <span aria-hidden="true">↔</span> English</button>
+          <button type="button" data-pair="spanish" aria-pressed="false">Spanish <span aria-hidden="true">↔</span> English</button>
+        </div>
+        <div class="turn-head">
+          <span class="direction" id="direction">Greek → English</span>
+          <span class="count" id="count">Turn 1 of 2</span>
+        </div>
+        <div id="turn" class="turn" aria-live="polite">
+          <div class="source">
+            <span id="source-label">Original · Greek</span>
+            <p id="source-text" lang="el-GR">Ευχαριστώ πάρα πολύ.</p>
+          </div>
+          <div class="translation">
+            <span id="target-label">Translation · English</span>
+            <p id="target-text" lang="en-US">Thank you very much.</p>
+          </div>
+        </div>
+        <div class="turn-actions">
+          <div class="audio-actions">
+            <button id="hear-source" class="button secondary" type="button">Hear original</button>
+            <button id="hear-target" class="button secondary" type="button">Hear translation</button>
+          </div>
+          <button id="next" class="button primary" type="button">Next turn <span aria-hidden="true">→</span></button>
+        </div>
+        <p id="audio-status" class="note" role="status">These examples use generated test speech and fixed translations.</p>
+      </div>
+    </section>
+
+    <section id="method" class="section" aria-labelledby="method-title">
+      <p class="eyebrow">Research notes</p>
+      <h2 id="method-title">A quicker handoff between speakers.</h2>
+      <div class="steps">
+        <div><span>01</span><h3>Listen</h3><p>Whisper recognizes the words and selects the direction from the two chosen languages.</p></div>
+        <div><span>02</span><h3>Translate</h3><p>NLLB translates the transcript. On a short pause the app can prepare the turn, then hold the output until the pause confirms it.</p></div>
+        <div><span>03</span><h3>Speak</h3><p>Captions appear as soon as the translation is ready. The local app uses pitch, pace, and emphasis from the recording for playback.</p></div>
+      </div>
+      <p class="timing"><strong>2.02 s → 1.49 s</strong> median to caption across three smooth test turns on one Mac. The test kept the same 0.75-second pause.</p>
+      <p class="note">A small FLEURS pilot across 11 non-English languages measured lower transcription error with Whisper Turbo. It used clean read speech. Testing conversational accents, noise, and perceived emotional fidelity remains part of the study. <a href="https://research.google/pubs/fleurs-few-shot-learning-evaluation-of-universal-representations-of-speech/">FLEURS benchmark</a></p>
+    </section>
+
+    <section id="run" class="section run" aria-labelledby="run-title">
+      <div>
+        <p class="eyebrow">Try the microphone interpreter</p>
+        <h2 id="run-title">Run Say Across from the source.</h2>
+        <p>Open the project repository, follow <strong>START_HERE.md</strong>, then launch the Python app to translate your own speech. The repository includes the study protocol and a Docker setup for hosting the live interpreter.</p>
+      </div>
+      <a id="repository" class="button secondary" hidden>Open the GitHub repository <span aria-hidden="true">↗</span></a>
+    </section>
+  </main>
+
+  <footer class="shell">Say Across <span aria-hidden="true">·</span> Noncommercial research prototype</footer>
+</body>
+</html>
