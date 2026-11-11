@@ -1,7 +1,8 @@
 FROM python:3.11-slim-trixie
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=2 \
     TOKENIZERS_PARALLELISM=false HF_HUB_DISABLE_TELEMETRY=1 GRADIO_ANALYTICS_ENABLED=False \
-    HF_HOME=/home/app/.cache/huggingface HF_HUB_DISABLE_XET=1 HF_HUB_DOWNLOAD_TIMEOUT=180
+    HF_HOME=/home/app/.cache/huggingface HF_HUB_DISABLE_XET=1 HF_HUB_DOWNLOAD_TIMEOUT=180 \
+    POLYGLOT_PUBLIC_REVIEW=1
 RUN apt-get update && apt-get install -y --no-install-recommends espeak-ng \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 app

@@ -9,6 +9,8 @@ A private Docker Space on Hugging Face gives you a stable HTTPS page and runs in
 
 The app listens on port 7860 inside the container. The hosted process requires the app password and disables optional remote adaptation. The browser sends short rolling caption windows and completed audio turns to the hosting instance, which runs recognition and translation. Live audio is held in memory for processing. Single uploaded recordings and generated clips may be cached temporarily by Gradio. The Linux image offers captions and expressive eSpeak NG playback. The optional voice-matching engine runs on Apple Silicon. Evaluate caption quality and intelligibility on the deployed service by language. [eSpeak NG language coverage](https://github.com/espeak-ng/espeak-ng/blob/master/docs/languages.md)
 
+The container image serves anonymously by default, which suits a prototype. For the password gate, set `POLYGLOT_ACCESS_PASSWORD` to at least 16 characters and `POLYGLOT_PUBLIC_REVIEW=0`.
+
 A hosted instance makes no outbound model calls by default. The OpenAI revision is always disabled when `--host` is not a loopback address. The Claude restating and lookup features are disabled too, unless the operator sets `POLYGLOT_HOSTED_ASSISTANT=1` alongside `ANTHROPIC_API_KEY`, so no hosted reviewer spends the operator's credentials by accident. Voice range matching is local and stays available, rendered by eSpeak NG speaker variants.
 
 For this research prototype, keep access within the private test group. The NLLB checkpoint is published for noncommercial research under CC BY-NC 4.0. [Meta model card](https://huggingface.co/facebook/nllb-200-distilled-600M)

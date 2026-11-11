@@ -660,8 +660,11 @@ if __name__ == "__main__":
     hosted_assistant = hosted and os.environ.get("POLYGLOT_HOSTED_ASSISTANT") == "1"
     if hosted_assistant:
         if not assistant_available():
-            parser.error("POLYGLOT_HOSTED_ASSISTANT=1 needs ANTHROPIC_API_KEY in the same environment.")
-        if public_review:
+            # Degrade to translation only rather than refuse to start a deployment.
+            print("Note: POLYGLOT_HOSTED_ASSISTANT=1 needs ANTHROPIC_API_KEY in the same "
+                  "environment. Serving translation, captions and voice only.", flush=True)
+            hosted_assistant = False
+        elif public_review:
             print("Warning: the restating and lookup features are enabled for anonymous visitors. "
                   "Every visitor spends this deployment's Anthropic credentials. Remove "
                   "POLYGLOT_PUBLIC_REVIEW=1 to keep the password gate, or unset "
