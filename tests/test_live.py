@@ -179,3 +179,55 @@ class LiveChecks(TestCase):
         result = GoogleNMT().translate("Good morning.", "eng_Latn", "spa_Latn")
         self.assertTrue(result)
         self.assertNotEqual(result, "Good morning.")
+
+
+class PortFallbackTests(TestCase):
+    """A stale copy holding the default port must not stop a new one starting."""
+
+    class FakeUI:
+        def __init__(self, busy=()):
+            self.busy = set(busy)
+            self.attempted = []
+
+        def launch(self, *, server_port, **options):
+            self.attempted.append(server_port)
+            if server_port in self.busy:
+                raise OSError(f"Cannot find empty port in range: {server_port}-{server_port}")
+            return f"served on {server_port}"
+
+    def test_a_free_default_port_is_used_directly(self):
+        from app import serve
+
+        ui = self.FakeUI()
+        self.assertEqual(serve(ui, 7860), "served on 7860")
+        self.assertEqual(ui.attempted, [7860])
+
+    def test_a_busy_port_moves_to_the_next_free_one(self):
+        from app import serve
+
+        ui = self.FakeUI(busy={7860, 7861})
+        self.assertEqual(serve(ui, 7860), "served on 7862")
+        self.assertEqual(ui.attempted, [7860, 7861, 7862])
+
+    def test_every_port_busy_still_raises_so_the_caller_can_explain(self):
+        from app import PORT_SEARCH, serve
+
+        ui = self.FakeUI(busy=set(range(7860, 7860 + PORT_SEARCH)))
+        with self.assertRaises(OSError):
+            serve(ui, 7860)
+        self.assertEqual(len(ui.attempted), PORT_SEARCH)
+
+    def test_the_other_launch_options_are_passed_through_unchanged(self):
+        from app import serve
+
+        seen = {}
+
+        class Recorder:
+            def launch(self, **options):
+                seen.update(options)
+                return "ok"
+
+        serve(Recorder(), 7860, server_name="127.0.0.1", share=False, pwa=True)
+        self.assertEqual(seen["server_name"], "127.0.0.1")
+        self.assertFalse(seen["share"])
+        self.assertEqual(seen["server_port"], 7860)

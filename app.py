@@ -87,6 +87,26 @@ ASSISTANT_MESSAGES = {
 }
 
 
+PORT_SEARCH = 12
+
+
+def serve(ui, port, **options):
+    """Launch on the first free port at or above `port`.
+
+    A stale copy of the app holding the default port used to stop a new one
+    from starting at all, which reads as the app being broken.
+    """
+    last = port + PORT_SEARCH - 1
+    for candidate in range(port, last + 1):
+        try:
+            return ui.launch(server_port=candidate, **options)
+        except OSError:
+            if candidate == last:
+                raise
+            print(f"Port {candidate} is in use. Trying {candidate + 1}...", flush=True)
+    return None
+
+
 def resolve_assistant(allow_assistant, demo):
     """Pick the best assistant this machine can actually run.
 
@@ -698,11 +718,19 @@ if __name__ == "__main__":
                   "POLYGLOT_PUBLIC_REVIEW=1 to keep the password gate, or unset "
                   "POLYGLOT_HOSTED_ASSISTANT to serve translation only.", flush=True)
     os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
-    build_app(args.demo, args.device, not args.no_emotion, allow_remote=not hosted,
-              fast_whisper=args.fast_whisper, whisper_turbo=args.whisper_turbo,
-              fast_nllb=args.fast_nllb, clone_executable=args.voice_engine,
-              native_voice_executable=args.native_voice, warm=args.warm,
-              allow_assistant=not args.no_assistant and (not hosted or hosted_assistant)
-              ).queue(max_size=16).launch(
-        server_name=args.host, server_port=args.port, share=False, auth=auth, pwa=True, inbrowser=args.open_browser,
-        favicon_path=Path(__file__).parent / "pragmatics" / "icon.svg", max_file_size=MAX_AUDIO_BYTES)
+    ui = build_app(args.demo, args.device, not args.no_emotion, allow_remote=not hosted,
+                   fast_whisper=args.fast_whisper, whisper_turbo=args.whisper_turbo,
+                   fast_nllb=args.fast_nllb, clone_executable=args.voice_engine,
+                   native_voice_executable=args.native_voice, warm=args.warm,
+                   allow_assistant=not args.no_assistant and (not hosted or hosted_assistant)
+                   ).queue(max_size=16)
+    try:
+        serve(ui, args.port, server_name=args.host, share=False, auth=auth, pwa=True,
+              inbrowser=args.open_browser, max_file_size=MAX_AUDIO_BYTES,
+              favicon_path=Path(__file__).parent / "pragmatics" / "icon.svg")
+    except OSError:
+        raise SystemExit(
+            f"Ports {args.port} to {args.port + PORT_SEARCH - 1} are all in use. Another copy of "
+            f"Click is probably still running: close its terminal window, or stop it with "
+            f"`lsof -ti:{args.port} | xargs kill`, then start Click again."
+        ) from None

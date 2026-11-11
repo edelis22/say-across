@@ -19,6 +19,8 @@
 
 3. Keep that terminal window open. The launcher opens your browser. Choose two languages, click **Start listening**, and allow microphone access if prompted. Use the same command to reopen Click later. [Local app](http://127.0.0.1:7860/)
 
+If a copy of Click is already running, the launcher moves to the next free port and prints the address it used. Close the old terminal window to free the original port.
+
 The first run installs dependencies and downloads the recognition and translation models when first used. Allow several GB of disk space and a few minutes for setup. The microphone and translation work without an API key. Add `--demo` for a smaller setup that opens fixed examples. Use `--port 7861` if the default port is busy.
 
 The standard setup includes captions and the two-way interpreter. macOS provides system playback, and the other platforms can use eSpeak NG when installed. For the Apple Silicon setup with Whisper Turbo and AI voice matching, follow the [Apple Silicon instructions](README.md#faster-playback-and-voice-matching-on-apple-silicon).
