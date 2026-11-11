@@ -6,9 +6,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends espeak-ng \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 app
 WORKDIR /app
-COPY requirements.txt requirements-emotion.txt ./
+COPY requirements.txt requirements-emotion.txt requirements-assistant.txt ./
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.8.0 \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements-assistant.txt
 COPY app.py ./
 COPY pragmatics ./pragmatics
 USER app

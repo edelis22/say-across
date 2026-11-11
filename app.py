@@ -655,12 +655,23 @@ if __name__ == "__main__":
         if len(password) < 16:
             parser.error("Hosting requires POLYGLOT_ACCESS_PASSWORD of at least 16 characters.")
         auth = ("partner", password)
+    # A hosted instance makes no outbound model calls unless the operator opts in,
+    # because every visitor would otherwise spend the operator's credentials.
+    hosted_assistant = hosted and os.environ.get("POLYGLOT_HOSTED_ASSISTANT") == "1"
+    if hosted_assistant:
+        if not assistant_available():
+            parser.error("POLYGLOT_HOSTED_ASSISTANT=1 needs ANTHROPIC_API_KEY in the same environment.")
+        if public_review:
+            print("Warning: the restating and lookup features are enabled for anonymous visitors. "
+                  "Every visitor spends this deployment's Anthropic credentials. Remove "
+                  "POLYGLOT_PUBLIC_REVIEW=1 to keep the password gate, or unset "
+                  "POLYGLOT_HOSTED_ASSISTANT to serve translation only.", flush=True)
     os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
     build_app(args.demo, args.device, not args.no_emotion, allow_remote=not hosted,
               fast_whisper=args.fast_whisper, whisper_turbo=args.whisper_turbo,
               fast_nllb=args.fast_nllb, clone_executable=args.voice_engine,
               native_voice_executable=args.native_voice, warm=args.warm,
-              allow_assistant=not args.no_assistant and not hosted
+              allow_assistant=not args.no_assistant and (not hosted or hosted_assistant)
               ).queue(max_size=16).launch(
         server_name=args.host, server_port=args.port, share=False, auth=auth, pwa=True, inbrowser=args.open_browser,
         favicon_path=Path(__file__).parent / "pragmatics" / "icon.svg", max_file_size=MAX_AUDIO_BYTES)

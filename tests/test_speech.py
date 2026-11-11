@@ -518,3 +518,17 @@ class AssistantDisabledTests(TestCase):
         self.assertNotIn("live_lookup", names)
         self.assertNotIn("restate", names)
         self.assertIn("live_phrase", names)
+
+    def test_the_features_can_be_switched_off_even_with_a_credential_present(self):
+        """Covers --no-assistant and a hosted deployment that has not opted in."""
+        from app import build_app
+
+        with patch("app.speech_available", return_value=True), patch("app.WhisperTranscriber"), \
+                patch("app.NLLB"), patch("app.assistant_available", return_value=True), \
+                patch("app.ClaudeAssistant") as built:
+            ui = build_app(allow_remote=False, allow_assistant=False)
+        names = {fn.api_name for fn in ui.fns.values()}
+        self.assertNotIn("live_lookup", names)
+        self.assertNotIn("live_answer_language", names)
+        self.assertNotIn("restate", names)
+        built.assert_not_called()
