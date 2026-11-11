@@ -27,7 +27,22 @@ The standard setup includes captions and the two-way interpreter. macOS provides
 
 ## Turn on the understanding features
 
-The spoken translation, including voice range matching, needs no API key. To add **Explain at another level** and **Ask about where you are**, install the client and set a Claude key in the terminal you start Click from. Both features stay hidden until a key is present.
+The spoken translation, including voice range matching, needs no API key. **Explain at another level** and **Ask about where you are** need an AI engine, and there are two ways to get one.
+
+**Free, with no account and nothing to pay.** Install [Ollama](https://ollama.com) and download one model. The model runs on your own computer, so nothing goes to a paid service, and lookups are grounded in Wikipedia.
+
+```sh
+brew install ollama
+ollama serve
+```
+
+```sh
+ollama pull qwen2.5:7b
+```
+
+Leave `ollama serve` running and start Click as usual. The features appear by themselves and the panel reads **Answered by local model**. Expect a few GB of download, and simpler, slower answers than the paid tier.
+
+**Paid, and more accurate.** Set a Claude key instead, in the terminal you start Click from. Click prefers it over the local model, and it adds live web search and better quality across all twelve languages.
 
 ```sh
 read -rs 'ANTHROPIC_API_KEY?Anthropic API key: '
