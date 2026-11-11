@@ -657,12 +657,11 @@ if __name__ == "__main__":
         auth = ("partner", password)
     # A hosted instance makes no outbound model calls unless the operator opts in,
     # because every visitor would otherwise spend the operator's credentials.
-    hosted_assistant = hosted and os.environ.get("POLYGLOT_HOSTED_ASSISTANT") == "1"
+    # A credential in the environment is taken as intent to offer the features,
+    # hosted included. POLYGLOT_HOSTED_ASSISTANT=0 serves translation only.
+    hosted_assistant = hosted and os.environ.get("POLYGLOT_HOSTED_ASSISTANT") != "0"
     if hosted_assistant:
         if not assistant_available():
-            # Degrade to translation only rather than refuse to start a deployment.
-            print("Note: POLYGLOT_HOSTED_ASSISTANT=1 needs ANTHROPIC_API_KEY in the same "
-                  "environment. Serving translation, captions and voice only.", flush=True)
             hosted_assistant = False
         elif public_review:
             print("Warning: the restating and lookup features are enabled for anonymous visitors. "

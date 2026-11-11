@@ -11,7 +11,7 @@ The app listens on port 7860 inside the container. The hosted process requires t
 
 The container image serves anonymously by default, which suits a prototype. For the password gate, set `POLYGLOT_ACCESS_PASSWORD` to at least 16 characters and `POLYGLOT_PUBLIC_REVIEW=0`.
 
-A hosted instance makes no outbound model calls by default. The OpenAI revision is always disabled when `--host` is not a loopback address. The Claude restating and lookup features are disabled too, unless the operator sets `POLYGLOT_HOSTED_ASSISTANT=1` alongside `ANTHROPIC_API_KEY`, so no hosted reviewer spends the operator's credentials by accident. Voice range matching is local and stays available, rendered by eSpeak NG speaker variants.
+A hosted instance makes no outbound model calls by default. The OpenAI revision is always disabled when `--host` is not a loopback address. The Claude restating and lookup features follow `ANTHROPIC_API_KEY`: present in the environment, they are offered; absent, they are hidden. `POLYGLOT_HOSTED_ASSISTANT=0` turns them off while the key stays available to other code. Every visitor to an open deployment with a key spends the operator's credentials, so set a spend limit on it. Voice range matching is local and stays available, rendered by eSpeak NG speaker variants.
 
 For this research prototype, keep access within the private test group. The NLLB checkpoint is published for noncommercial research under CC BY-NC 4.0. [Meta model card](https://huggingface.co/facebook/nllb-200-distilled-600M)
 
