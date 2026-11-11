@@ -138,6 +138,8 @@ def validate_simplification(candidate):
 class ClaudeAssistant:
     """One lazily built Anthropic client shared by the simplify and lookup features."""
 
+    label = "Claude"
+
     def __init__(self, model=None, client=None):
         self.model = model or os.environ.get("ASSISTANT_LLM_MODEL") or ASSISTANT_MODEL
         self._client = client

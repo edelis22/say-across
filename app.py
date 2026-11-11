@@ -17,6 +17,7 @@ from pragmatics.assistant import (
 )
 from pragmatics.captions import caption_cues
 from pragmatics.config import EXPLANATION_LEVELS, LANGUAGES, RELATIONSHIPS, TONES, VOICE_RANGES
+from pragmatics.local_assistant import LocalAssistant, local_assistant_available
 from pragmatics.demo import DemoAdapter, DemoTranslator, SOURCE, TARGETS
 from pragmatics.emotion import EmotionDetector
 from pragmatics.interpreter import (
@@ -79,7 +80,34 @@ ASSISTANT_MESSAGES = {
     "empty_answer": "The assistant returned no answer. Try rewording the question.",
     "translation_too_long": "This turn is too long to restate. Try a shorter turn.",
     "empty_translation": "There is nothing to restate yet.",
+    "local_model_unreachable": "The local model did not respond. Check that Ollama is running.",
+    "local_model_missing": "No local model is installed. Run: ollama pull qwen2.5:7b",
+    "no_reference_found": "No reference passage was found for that question. Try rewording it.",
+    "research_unreachable": "Could not reach the reference source. Check the connection.",
 }
+
+
+def resolve_assistant(allow_assistant, demo):
+    """Pick the best assistant this machine can actually run.
+
+    Claude when a credential is present, otherwise a free local model through
+    Ollama, otherwise nothing and the features stay hidden. CLICK_ASSISTANT
+    pins a tier: "claude", "local" or "off".
+    """
+    if not allow_assistant or demo:
+        return None
+    pinned = (os.environ.get("CLICK_ASSISTANT") or "").strip().lower()
+    if pinned == "off":
+        return None
+    if pinned == "local":
+        return LocalAssistant() if local_assistant_available() else None
+    if pinned == "claude":
+        return ClaudeAssistant() if assistant_available() else None
+    if assistant_available():
+        return ClaudeAssistant()
+    if local_assistant_available():
+        return LocalAssistant()
+    return None
 
 
 def _lookup_message(reason):
@@ -100,7 +128,7 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
     system_voice = bool(transcriber and speech_available())
     voice_match = VoiceMatch(clone_executable) if transcriber and clone_executable else None
     mac_voice = MacVoice(native_voice_executable) if transcriber and native_voice_executable else None
-    assistant = ClaudeAssistant() if allow_assistant and not demo and assistant_available() else None
+    assistant = resolve_assistant(allow_assistant, demo)
     # Re-rendering runs beside playback so captions and audio are never delayed by it.
     helpers = (ThreadPoolExecutor(max_workers=4, thread_name_prefix="click-assistant")
                if assistant is not None else None)
@@ -463,6 +491,7 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
                 level_options="".join(f'<option value="{escape(key)}">{escape(label)}</option>'
                                       for key, (label, _) in EXPLANATION_LEVELS.items()),
                 assistant_visibility="" if assistant else "hidden",
+                assistant_engine=escape(getattr(assistant, "label", "")),
                 playback_visibility="" if (system_voice or mac_voice) else "hidden",
                 question_limit=MAX_QUESTION_CHARS,
                 relationship_options="".join(f'<option value="{key}">{key.title()}</option>' for key in RELATIONSHIPS),
