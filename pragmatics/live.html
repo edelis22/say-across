@@ -52,11 +52,16 @@
         <label><span data-live="target-label">Second language</span><select data-live="target">{target_options}</select></label>
       </div>
       <div class="say-mic-area">
-        <button type="button" class="say-mic" data-live="start" aria-label="Start listening">
-          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="12" y="4" width="8" height="15" rx="4"/><path d="M8 15v1a8 8 0 0 0 16 0v-1m-8 9v4m-4 0h8"/>
-          </svg>
-        </button>
+        <div class="say-orb" data-live="orb" data-orb="idle">
+          <span class="say-orb-ring" aria-hidden="true"></span>
+          <span class="say-orb-ring" aria-hidden="true"></span>
+          <span class="say-orb-ring" aria-hidden="true"></span>
+          <button type="button" class="say-mic" data-live="start" aria-label="Start listening">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="12" y="4" width="8" height="15" rx="4"/><path d="M8 15v1a8 8 0 0 0 16 0v-1m-8 9v4m-4 0h8"/>
+            </svg>
+          </button>
+        </div>
         <p class="say-status" data-live="status" role="status">Start listening</p>
         <p class="say-help">Captions update as you speak. Pause to finish the turn.</p>
         <progress data-live="progress" max="1" value="0" aria-label="Pause countdown" hidden></progress>

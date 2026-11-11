@@ -36,6 +36,7 @@
         const answerStatus = control("answer-status");
         const answerRepeated = control("answer-repeated");
         const answerRepeatedGroup = control("answer-repeated-group");
+        const orb = control("orb");
         const sampleRate = 16000;
         const maxSamples = sampleRate * Number(panel.dataset.maxSeconds);
         const captionSamples = sampleRate * Number(panel.dataset.captionSeconds);
@@ -64,8 +65,13 @@
         let session, cancelProfile;
         let profileSample = "", profileRecording = false;
 
+        const ORB_STATES = {ready: "idle", listening: "listening", waiting: "listening",
+                            playing: "speaking", working: "working", opening: "working",
+                            error: "idle"};
+
         function show(state, message, fraction) {
             panel.dataset.state = state;
+            orbState(ORB_STATES[state] || "idle");
             indicator.lastChild.nodeValue = labels[state];
             if (status.textContent !== message) status.textContent = message;
             progress.hidden = fraction === undefined;
@@ -87,6 +93,73 @@
                 raw += String.fromCharCode(...bytes.subarray(i, i + 8192));
             }
             return btoa(raw);
+        }
+
+        // Speech sits around 0.02-0.20 RMS, so this maps a normal voice across the
+        // full range without clipping on a loud one.
+        const SPEECH_FULL_SCALE = 0.14;
+        let orbLevel = 0;
+        let orbFrame = null;
+
+        function orbState(state) {
+            if (orb.dataset.orb !== state) orb.dataset.orb = state;
+            if (state === "idle" || state === "working") orbShow(0);
+        }
+
+        function orbShow(value) {
+            // A square-ish response, because loudness is perceived that way: quiet
+            // speech still moves the ring and a loud voice stops pinning at full.
+            const target = Math.min(1, Math.max(0, value || 0) ** 0.7);
+            // Rise with the voice, fall away gently, so the ring does not flicker
+            // between syllables.
+            orbLevel = target > orbLevel ? target : orbLevel * 0.80 + target * 0.20;
+            orb.style.setProperty("--level", orbLevel.toFixed(3));
+        }
+
+        let playbackAnalyser = null, playbackBins = null, playbackContext = null;
+
+        function attachPlaybackAnalyser() {
+            if (playbackAnalyser !== null || !window.AudioContext) return;
+            try {
+                playbackContext = new AudioContext();
+                const node = playbackContext.createMediaElementSource(player);
+                playbackAnalyser = playbackContext.createAnalyser();
+                playbackAnalyser.fftSize = 256;
+                playbackAnalyser.smoothingTimeConstant = 0.75;
+                // Reconnecting to the destination keeps the audio audible.
+                node.connect(playbackAnalyser);
+                playbackAnalyser.connect(playbackContext.destination);
+                playbackBins = new Uint8Array(playbackAnalyser.frequencyBinCount);
+            } catch {
+                // Without analysis the orb still pulses, and audio is untouched.
+                playbackAnalyser = null;
+            }
+        }
+
+        function watchPlayback() {
+            if (orbFrame !== null) cancelAnimationFrame(orbFrame);
+            const step = () => {
+                if (player.paused || player.ended) {
+                    orbFrame = null;
+                    return;
+                }
+                if (playbackAnalyser && playbackBins) {
+                    playbackAnalyser.getByteTimeDomainData(playbackBins);
+                    let sum = 0;
+                    for (const sample of playbackBins) sum += (sample - 128) ** 2;
+                    orbShow(Math.sqrt(sum / playbackBins.length) / 42);
+                } else {
+                    orbShow(0.45 + 0.35 * Math.sin(performance.now() / 180));
+                }
+                orbFrame = requestAnimationFrame(step);
+            };
+            orbFrame = requestAnimationFrame(step);
+        }
+
+        function stopWatchingPlayback() {
+            if (orbFrame !== null) cancelAnimationFrame(orbFrame);
+            orbFrame = null;
+            orbShow(0);
         }
 
         function rms(chunk) {
@@ -532,6 +605,7 @@
 
         function accept(current, chunk) {
             const energy = rms(chunk);
+            if (!current.playing) orbShow(energy / SPEECH_FULL_SCALE);
             const levels = current.energyHistory;
             levels.push(energy);
             if (levels.length > 24) levels.shift();
@@ -851,16 +925,26 @@
         });
         stop.addEventListener("click", () => stopCapture(session));
         player.addEventListener("playing", () => {
+            attachPlaybackAnalyser();
+            void playbackContext?.resume().catch(() => {});
+            orbState("speaking");
+            watchPlayback();
             if (!session) return;
             session.playing = true;
             if (session.listening && session.twoWay) show("playing", "Playing translation. Listening resumes after playback.");
         });
         player.addEventListener("ended", () => {
+            stopWatchingPlayback();
+            orbState(session?.listening ? "listening" : "idle");
             if (!session) return;
             session.playing = false;
             session.resumeAfter = performance.now() + 150;
             playNext(session);
             if (session.listening && !session.playing) show("listening", "Listening for your next turn…");
+        });
+        player.addEventListener("pause", () => {
+            stopWatchingPlayback();
+            if (orb.dataset.orb === "speaking") orbState(session?.listening ? "listening" : "idle");
         });
         swap.addEventListener("click", () => {
             const previous = source.value;

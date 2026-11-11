@@ -134,3 +134,30 @@
 .say-answer-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 9px; }
 .say-answer-actions label { flex: 1 1 150px; }
 #live-voice [data-live="answer-repeated-group"]:not([hidden]) { margin-top: 10px; border-top: 1px dashed #dbe3ea; padding-top: 9px; }
+
+/* Voice orb. Rings scale from the measured level: the live microphone while
+   you speak, the playback signal while the app speaks. */
+.say-orb { --level: 0; position: relative; display: grid; place-items: center; width: 150px; height: 150px; }
+.say-orb-ring {
+  position: absolute; inset: 0; margin: auto; width: 76px; height: 76px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(11,105,94,.30), rgba(11,105,94,0) 70%);
+  transform: scale(calc(1 + var(--level) * var(--k)));
+  transition: transform 90ms linear, opacity 240ms ease, background 240ms ease;
+  pointer-events: none;
+}
+.say-orb-ring:nth-child(1) { --k: .55; }
+.say-orb-ring:nth-child(2) { --k: 1.00; opacity: .62; }
+.say-orb-ring:nth-child(3) { --k: 1.55; opacity: .38; }
+.say-orb[data-orb="idle"] .say-orb-ring { animation: say-breathe 4.2s ease-in-out infinite; }
+.say-orb[data-orb="idle"] .say-orb-ring:nth-child(2) { animation-delay: .5s; }
+.say-orb[data-orb="idle"] .say-orb-ring:nth-child(3) { animation-delay: 1s; }
+.say-orb[data-orb="working"] .say-orb-ring { animation: say-pulse 1.3s ease-in-out infinite; }
+.say-orb[data-orb="working"] .say-orb-ring:nth-child(2) { animation-delay: .18s; }
+.say-orb[data-orb="working"] .say-orb-ring:nth-child(3) { animation-delay: .36s; }
+/* The app's own voice reads cooler than the speaker's, so the two are told apart. */
+.say-orb[data-orb="speaking"] .say-orb-ring { background: radial-gradient(circle, rgba(20,80,140,.34), rgba(20,80,140,0) 70%); }
+@keyframes say-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+@keyframes say-pulse { 0%, 100% { transform: scale(1); opacity: .30; } 50% { transform: scale(1.3); opacity: .7; } }
+@media (prefers-reduced-motion: reduce) {
+  .say-orb-ring { animation: none !important; transition: opacity 240ms ease; transform: none !important; }
+}
