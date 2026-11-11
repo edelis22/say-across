@@ -8,18 +8,22 @@
 
 GitHub Pages serves the walkthrough, including sample captions and browser voice playback. The microphone interpreter runs in the Python app. Your partner can launch it from a copy of the repository. [Local launch guide](START_HERE.md) · [GitHub Pages overview](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)
 
-## Run a live review from GitHub
+## Run Click from GitHub in a Codespace
 
-1. In the published repository, open **Code → Codespaces** and create a Codespace. The included configuration builds the app's Python container.
-2. In the Codespace terminal, start the interpreter and let the model downloads finish.
+A Codespace runs the app on GitHub's machines, so nothing is installed locally and the checkout is always the branch you picked. `.devcontainer/` pins Python 3.11, installs eSpeak NG and ffmpeg, and builds the environment on creation.
+
+1. On the repository page, choose the branch you want, then **Code → Codespaces → Create codespace on that branch**. Setup takes a few minutes the first time.
+2. When the terminal is ready, start the app.
 
    ```sh
-   env -u GITHUB_TOKEN -u GH_TOKEN POLYGLOT_PUBLIC_REVIEW=1 python app.py --host 0.0.0.0 --warm
+   python3.11 start.py --no-browser
    ```
 
-3. In **Ports**, set the visibility of port **7860** to **Public**. Copy its forwarded HTTPS address. Verify the microphone and translation from a signed-out browser before sharing the link. [GitHub port sharing](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace#sharing-a-port)
+3. Open the **Ports** tab and click the globe beside port **7860**. It opens over HTTPS, which the microphone requires. The first spoken turn downloads the recognition and translation models and takes several minutes.
 
-The link serves the live app while that Codespace is running. GitHub stops idle Codespaces, and organizational settings can restrict public ports. [Codespace lifecycle](https://docs.github.com/en/codespaces/about-codespaces/understanding-the-codespace-lifecycle)
+The forwarded port is private to your account by default. To let someone else in, right-click the port, choose **Port Visibility → Public**, and share the address; organizational policy can restrict public ports. GitHub stops idle Codespaces and personal accounts include a monthly free allowance, so stop the Codespace when you are done. [Codespace lifecycle](https://docs.github.com/en/codespaces/about-codespaces/understanding-the-codespace-lifecycle) · [Port forwarding](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace)
+
+Spoken playback in a Codespace uses eSpeak NG, so the voice range is rendered as a speaker variant rather than a matched system voice. **Ask Click out loud** and the lookup work there with nothing further to install. For simpler wording, install the free local model in the Codespace terminal with `curl -fsSL https://ollama.com/install.sh | sh`, then `ollama serve &` and `ollama pull qwen2.5:3b`, and restart Click.
 
 ## Publish a hosted Click on Hugging Face Spaces
 

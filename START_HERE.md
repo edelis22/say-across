@@ -1,5 +1,9 @@
 # Run Click on your computer
 
+## Run it on GitHub without installing anything
+
+Open the repository on GitHub, pick the branch, then **Code → Codespaces → Create codespace**. When the terminal appears, run `python3.11 start.py --no-browser` and open port **7860** from the **Ports** tab. Nothing is installed on your own computer and the code is always current. See the [publishing guide](PUBLISH.md#run-click-from-github-in-a-codespace) for the detail.
+
 ## Open your own copy
 
 1. Unzip the source package. You’ll need Python 3.11. The standard setup uses PyTorch CPU wheels for Apple Silicon, Windows x64, or Linux x64. [Python downloads](https://www.python.org/downloads/) · [PyTorch installation](https://pytorch.org/get-started/previous-versions/)
