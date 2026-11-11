@@ -107,5 +107,30 @@
 #live-voice select { appearance: auto; }
 
 .say-settings { flex-wrap: wrap; }
-.say-settings label { flex: 1 1 125px; }
+.say-settings label { flex: 1 1 150px; }
 .say-settings label:first-child { flex-basis: 100%; }
+
+/* Restated wording, term glossaries, and the lookup answer. */
+.say-caption-explained { font-size: clamp(1.05rem, 2.6vw, 1.4rem) !important; font-weight: 640; }
+#live-voice [data-live="caption-explained"]:not([hidden]) { margin-top: 12px; }
+#live-voice [data-live="caption-explained-note"] { margin-top: 5px; color: #bfd9ee; }
+#live-voice .say-glossary { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.say-glossary li { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; line-height: 1.35; }
+.say-glossary strong::after { content: ":"; }
+.say-turn-explained { font-size: 15px; line-height: 1.4; color: #14243a; border-left: 3px solid #0b695e; padding-left: 9px; }
+.say-turn .say-glossary li { color: #50637b; }
+#live-voice .say-assistant input[type="text"] { width: 100%; }
+.say-answer-group { margin-top: 10px; border-top: 1px solid #ebeff3; padding-top: 10px; }
+/* The caption label colour is tuned for the dark panel; darken it on a white card. */
+#live-voice .say-answer-group .say-caption-label { color: #50637b; }
+.say-answer { font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+#live-voice .say-sources { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; }
+.say-sources li { font-size: 12px; overflow-wrap: anywhere; }
+.say-sources a { color: #0b695e; }
+/* Keep glossary terms legible on the dark caption screen. */
+#live-voice .say-caption-screen .say-glossary strong,
+#live-voice .say-caption-screen .say-glossary span { color: #dfedfb; }
+#live-voice .say-turn .say-explain { justify-self: start; margin-top: 3px; }
+.say-answer-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 9px; }
+.say-answer-actions label { flex: 1 1 150px; }
+#live-voice [data-live="answer-repeated-group"]:not([hidden]) { margin-top: 10px; border-top: 1px dashed #dbe3ea; padding-top: 9px; }

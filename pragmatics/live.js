@@ -20,6 +20,22 @@
         const profileProgress = control("profile-progress");
         const profilePrompt = control("profile-prompt");
         const twoWay = control("two-way");
+        const level = control("level");
+        const voiceRange = control("voice-range");
+        const question = control("question");
+        const place = control("place");
+        const ask = control("ask");
+        const askClear = control("ask-clear");
+        const askStatus = control("ask-status");
+        const askAnswerGroup = control("ask-answer-group");
+        const askAnswer = control("ask-answer");
+        const askSources = control("ask-sources");
+        const answerLanguage = control("answer-language");
+        const answerRepeat = control("answer-repeat");
+        const answerSpeak = control("answer-speak");
+        const answerStatus = control("answer-status");
+        const answerRepeated = control("answer-repeated");
+        const answerRepeatedGroup = control("answer-repeated-group");
         const sampleRate = 16000;
         const maxSamples = sampleRate * Number(panel.dataset.maxSeconds);
         const captionSamples = sampleRate * Number(panel.dataset.captionSeconds);
@@ -39,6 +55,12 @@
         const history = control("history");
         const endpoint = new URL("gradio_api/call/live_phrase", document.baseURI);
         const draftEndpoint = new URL("gradio_api/call/live_caption", document.baseURI);
+        const lookupEndpoint = new URL("gradio_api/call/live_lookup", document.baseURI);
+        const explainEndpoint = new URL("gradio_api/call/live_explain", document.baseURI);
+        const answerLanguageEndpoint = new URL("gradio_api/call/live_answer_language", document.baseURI);
+        const answerAudioEndpoint = new URL("gradio_api/call/live_answer_audio", document.baseURI);
+        const canExplain = panel.querySelector(".say-assistant")?.hidden === false;
+        const bandNames = {lower: "lower pitch", higher: "higher pitch"};
         let session, cancelProfile;
         let profileSample = "", profileRecording = false;
 
@@ -156,6 +178,82 @@
             }));
         }
 
+        function fillGlossary(list, glossary, language) {
+            list.replaceChildren(...glossary.map(entry => {
+                const row = document.createElement("li");
+                const term = document.createElement("strong");
+                setText(term, entry.term, language);
+                const meaning = document.createElement("span");
+                setText(meaning, entry.meaning, language);
+                row.append(term, meaning);
+                return row;
+            }));
+        }
+
+        function explanationNote(explanation) {
+            return [explanation.check_numbers ? "Check the numbers against the original." : "",
+                    explanation.omitted || ""].filter(Boolean).join(" ");
+        }
+
+        function paintExplanation(result, to) {
+            const explanation = result.explanation || {};
+            const text = explanation.rendered || "";
+            control("caption-explained").hidden = !text && !explanation.error;
+            control("caption-explained-label").textContent = explanation.level_label
+                ? `Simpler wording · ${explanation.level_label}` : "Simpler wording";
+            setText(control("caption-explained-text"), text || explanation.error || "",
+                    text ? to.tag : "en");
+            fillGlossary(control("caption-glossary"), text ? explanation.glossary || [] : [], to.tag);
+            control("caption-explained-note").textContent = text ? explanationNote(explanation) : "";
+        }
+
+        function explainButton(item, result, to) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "say-end say-explain";
+            button.textContent = "Explain simply";
+            button.addEventListener("click", async () => {
+                button.disabled = true;
+                button.textContent = "Restating\u2026";
+                // Without a standing level, an on-demand request uses plain language.
+                const chosen = level.value === "as_spoken" ? "plain" : level.value;
+                try {
+                    const explanation = await requestLive(explainEndpoint,
+                        [result.translation, result.target_language, chosen,
+                            control("situation").value], null, 90000);
+                    button.remove();
+                    appendExplanation(item, {...result, explanation}, to);
+                } catch (error) {
+                    button.disabled = false;
+                    button.textContent = "Explain simply";
+                    voiceNote(item, error.message);
+                }
+            });
+            item.append(button);
+        }
+
+        function appendExplanation(item, result, to) {
+            const explanation = result.explanation || {};
+            if (!item || item.querySelector(".say-turn-explained")) return;
+            if (!explanation.rendered) {
+                voiceNote(item, explanation.error);
+                return;
+            }
+            const restated = document.createElement("span");
+            restated.className = "say-turn-explained";
+            setText(restated, explanation.rendered, to.tag);
+            item.append(restated);
+            if (explanation.glossary?.length) {
+                const glossary = document.createElement("ul");
+                glossary.className = "say-glossary";
+                glossary.setAttribute("role", "list");
+                glossary.setAttribute("aria-label", "Terms explained");
+                fillGlossary(glossary, explanation.glossary, to.tag);
+                item.append(glossary);
+            }
+            voiceNote(item, explanationNote(explanation));
+        }
+
         function direction(current, result) {
             return [current.languages[result.source_language || current.source],
                     current.languages[result.target_language || current.target]];
@@ -177,6 +275,7 @@
             const error = control("caption-error");
             error.textContent = result.error || "";
             error.hidden = !result.error;
+            paintExplanation(result, to);
             const cues = result.cues || [];
             control("caption-cue-group").hidden = !cues.length;
             fillCues(control("caption-cues"), cues, to.tag);
@@ -266,6 +365,9 @@
             if (result.tone_label && result.tone !== "auto" && result.voice_mode !== "captions") {
                 voiceNote(item, `Spoken tone · ${result.tone_label}`);
             }
+            if (bandNames[result.voice_band] && result.voice_mode === "expressive") {
+                voiceNote(item, `Voice range · ${bandNames[result.voice_band]}`);
+            }
             empty.hidden = true;
             const later = [...history.children].find(other => Number(other.dataset.turn) > turn);
             history.insertBefore(item, later || null);
@@ -332,6 +434,18 @@
                 if (!result) result = await submitTurn(current, chunks, options, showText);
                 if (!item) showText(result);
                 voiceNote(item, result.playback_error || result.voice_engine);
+                const [, to] = direction(current, result);
+                if (result.explanation && Object.keys(result.explanation).length) {
+                    appendExplanation(item, result, to);
+                    if (current.lastCaption?.turn === turn) {
+                        current.lastCaption.result = {...current.lastCaption.result,
+                                                      explanation: result.explanation};
+                        if (captionToggle.checked) paintCaption(current, current.lastCaption, false);
+                    }
+                } else if (canExplain && item && result.translation &&
+                           result.target_language !== result.source_language) {
+                    explainButton(item, result, to);
+                }
                 audio = result.audio;
             } catch (error) {
                 if (item) voiceNote(item, error.message);
@@ -367,7 +481,8 @@
         function turnSettings(current) {
             return {two_way: current.twoWay, tone: control("tone").value,
                 relationship: control("relationship").value, situation: control("situation").value,
-                remote: control("remote")?.checked || false, profile_language: current.profileLanguage};
+                remote: control("remote")?.checked || false, profile_language: current.profileLanguage,
+                level: level.value, voice_range: voiceRange.value};
         }
 
         function prepareTurn(current) {
@@ -544,6 +659,143 @@
             syncPlayback();
         });
         profileLanguage.addEventListener("change", describeProfile);
+
+        function sourceLink(source) {
+            const row = document.createElement("li");
+            let safe = null;
+            try {
+                const parsed = new URL(source.url);
+                if (parsed.protocol === "https:" || parsed.protocol === "http:") safe = parsed;
+            } catch {
+                safe = null;
+            }
+            if (!safe) {
+                row.textContent = source.title || "";
+                return row;
+            }
+            const link = document.createElement("a");
+            link.href = safe.href;
+            link.textContent = source.title || safe.hostname;
+            link.title = safe.href;
+            link.rel = "noreferrer noopener";
+            link.target = "_blank";
+            row.append(link);
+            return row;
+        }
+
+        // The answer currently on screen, with the language it is written in.
+        let currentAnswer = null;
+
+        function resetRepeat() {
+            answerRepeatedGroup.hidden = true;
+            answerRepeated.textContent = "";
+            answerStatus.textContent = "";
+        }
+
+        async function repeatAnswer() {
+            if (!currentAnswer) return;
+            const option = answerLanguage.selectedOptions[0];
+            answerRepeat.disabled = answerSpeak.disabled = true;
+            answerStatus.textContent = `Restating in ${option.textContent}\u2026`;
+            try {
+                const result = await requestLive(answerLanguageEndpoint,
+                    [currentAnswer.text, answerLanguage.value], null, 120000);
+                if (result.error) {
+                    answerStatus.textContent = result.error;
+                } else {
+                    control("answer-repeated-label").textContent =
+                        `The same answer \u00b7 ${option.textContent}`;
+                    setText(answerRepeated, result.answer, option.dataset.lang);
+                    answerRepeatedGroup.hidden = false;
+                    answerStatus.textContent = "";
+                    // Reading aloud now follows the language on screen.
+                    currentAnswer = {...currentAnswer, spoken: {text: result.answer,
+                                                                language: answerLanguage.value,
+                                                                label: option.textContent}};
+                }
+            } catch (error) {
+                answerStatus.textContent = error.message;
+            } finally {
+                answerRepeat.disabled = answerSpeak.disabled = false;
+            }
+        }
+
+        async function speakAnswer() {
+            if (!currentAnswer) return;
+            const spoken = currentAnswer.spoken || currentAnswer;
+            answerRepeat.disabled = answerSpeak.disabled = true;
+            answerStatus.textContent = `Reading the ${spoken.label} answer aloud\u2026`;
+            try {
+                const result = await requestLive(answerAudioEndpoint,
+                    [spoken.text, spoken.language], null, 120000);
+                if (result.error) {
+                    answerStatus.textContent = result.error;
+                } else {
+                    player.hidden = false;
+                    player.src = `data:audio/wav;base64,${result.audio}`;
+                    await player.play().catch(() => {});
+                    answerStatus.textContent = "Press play if the answer did not start.";
+                }
+            } catch (error) {
+                answerStatus.textContent = error.message;
+            } finally {
+                answerRepeat.disabled = answerSpeak.disabled = false;
+            }
+        }
+
+        answerRepeat.addEventListener("click", () => void repeatAnswer());
+        answerSpeak.addEventListener("click", () => void speakAnswer());
+
+        async function askQuestion() {
+            const text = question.value.trim();
+            if (!text) {
+                askStatus.textContent = "Type a question first.";
+                return;
+            }
+            ask.disabled = true;
+            askStatus.textContent = "Searching and answering\u2026";
+            try {
+                // Answers come back in the language this speaker is using.
+                const from = source.selectedOptions[0];
+                const result = await requestLive(lookupEndpoint,
+                    [text, source.value, place.value, control("situation").value], null, 180000);
+                if (result.error) {
+                    askStatus.textContent = result.error;
+                } else {
+                    askStatus.textContent = result.searched
+                        ? "Answered using the web sources listed below."
+                        : "Answered without a web search.";
+                    control("ask-answer-label").textContent = `Answer \u00b7 ${from.textContent}`;
+                    setText(askAnswer, result.answer, from.dataset.lang);
+                    askSources.replaceChildren(...(result.sources || []).map(sourceLink));
+                    askAnswerGroup.hidden = false;
+                    askClear.disabled = false;
+                    currentAnswer = {text: result.answer, language: source.value,
+                                     label: from.textContent};
+                    resetRepeat();
+                }
+            } catch (error) {
+                askStatus.textContent = error.message;
+            } finally {
+                ask.disabled = false;
+            }
+        }
+
+        ask.addEventListener("click", () => void askQuestion());
+        question.addEventListener("keydown", event => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            void askQuestion();
+        });
+        askClear.addEventListener("click", () => {
+            askAnswer.textContent = "";
+            askSources.replaceChildren();
+            askAnswerGroup.hidden = true;
+            askClear.disabled = true;
+            currentAnswer = null;
+            resetRepeat();
+            askStatus.textContent = "Ask about a place, a form, or a procedure.";
+        });
 
         start.addEventListener("click", async () => {
             start.disabled = source.disabled = target.disabled = swap.disabled = pause.disabled = voice.disabled = twoWay.disabled = true;

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .config import HIGHER_PITCH_FLOOR_HZ, LOWER_PITCH_CEILING_HZ
 from .emotion import EmotionReading
 
 LABELS = ("neutral", "calm", "joy", "sadness", "anger", "fear", "disgust", "surprise")
@@ -15,6 +16,8 @@ FEATURE_VERSION = 1
 MARGIN = 0.10
 LABEL_MARGIN = 0.15
 FRAME_SECONDS = 0.02
+SAMPLE_RATE = 16000
+MIN_VOICED_FRAMES_FOR_RANGE = 15
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,42 @@ def _summarize(track):
 
 def features(audio):
     return _summarize(_acoustic_track(audio))
+
+
+def _median_pitch(track):
+    """Median voiced f0 in Hz.
+
+    This is the one place absolute pitch is read. It never enters _summarize,
+    so the emotion classifier still sees only clip-relative pitch and the
+    published voice model stays unchanged. It is used to choose an output
+    voice whose range is closer to the speaker's.
+    """
+    if track is None or track.voiced.sum() < MIN_VOICED_FRAMES_FOR_RANGE:
+        return None
+    return float(np.median(SAMPLE_RATE / track.lags[track.voiced]))
+
+
+def pitch_voice_range(pitch_hz):
+    """Place a measured pitch in the lower or higher band, or abstain.
+
+    The gap between the two thresholds is the range where adult speakers
+    overlap. Measurements that land inside it return "" so the configured
+    default voice for the locale is kept rather than guessed at. This reports
+    a pitch band only and makes no claim about a speaker's gender or identity.
+    """
+    if pitch_hz is None:
+        return ""
+    if pitch_hz <= LOWER_PITCH_CEILING_HZ:
+        return "lower"
+    if pitch_hz >= HIGHER_PITCH_FLOOR_HZ:
+        return "higher"
+    return ""
+
+
+def voice_pitch(audio):
+    """Measure the speaker's pitch band from a recording."""
+    pitch = _median_pitch(_acoustic_track(audio))
+    return pitch, pitch_voice_range(pitch)
 
 
 def _delivery_changes(track):
@@ -177,13 +216,16 @@ class Delivery:
     pitch_range: int
     exaggeration: float
     emphasis_db: tuple[float, ...] = ()
+    voice_range: str = ""
+    pitch_hz: float | None = None
 
 
 def delivery(audio, *, source_language="eng_Latn"):
     """Map measured vocal variation to bounded controls for the output voice."""
     track = _acoustic_track(audio)
     vector = _summarize(track)
-    return _delivery(vector, _phrase_emphasis(track), _source_intensity(vector, source_language))
+    return _delivery(vector, _phrase_emphasis(track), _source_intensity(vector, source_language),
+                     _median_pitch(track))
 
 
 def intensity_level(vector, model):
@@ -203,7 +245,7 @@ def _source_intensity(vector, source_language):
         return None
 
 
-def _delivery(vector, emphasis=(), intensity=None):
+def _delivery(vector, emphasis=(), intensity=None, pitch_hz=None):
     span, drift, pace = (vector[0], vector[5], vector[13]) if vector is not None else (5, 0, 4)
     pitch_activity = float(np.clip((span - 5) / 7, -1, 1))
     rhythm = float(np.clip((pace - 4) / 3, -1, 1))
@@ -215,7 +257,8 @@ def _delivery(vector, emphasis=(), intensity=None):
         expressiveness = 0.40 * expressiveness + 0.60 * (0.39 + 0.27 * intensity)
         emphasis = tuple(round(value * (0.85 + 0.15 * intensity), 2) for value in emphasis)
     exaggeration = round(float(np.clip(expressiveness, 0.12, 0.70)), 2)
-    return Delivery(rate, shift, pitch_range, exaggeration, emphasis)
+    return Delivery(rate, shift, pitch_range, exaggeration, emphasis,
+                    pitch_voice_range(pitch_hz), pitch_hz)
 
 
 def _phrase_emphasis(track):
@@ -238,5 +281,6 @@ def analyze_turn(audio, *, enabled=True, source_language="eng_Latn"):
     track = _acoustic_track(audio)
     vector = _summarize(track)
     reading = _classify(vector, enabled and source_language == "eng_Latn")
-    style = _delivery(vector, _phrase_emphasis(track), _source_intensity(vector, source_language))
+    style = _delivery(vector, _phrase_emphasis(track), _source_intensity(vector, source_language),
+                      _median_pitch(track))
     return reading, style, _delivery_changes(track) if enabled else []

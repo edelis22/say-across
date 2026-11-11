@@ -1,6 +1,7 @@
 """Launch with python app.py or use --demo for fixed offline examples."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from contextlib import nullcontext
 from functools import partial
 from html import escape
@@ -10,8 +11,12 @@ from threading import Thread
 from time import perf_counter
 
 from pragmatics.adaptation import OpenAIAdapter, post_json
+from pragmatics.assistant import (
+    AssistantError, ClaudeAssistant, MAX_PASSAGE_CHARS, MAX_QUESTION_CHARS, assistant_available,
+    validate_simplification,
+)
 from pragmatics.captions import caption_cues
-from pragmatics.config import LANGUAGES, RELATIONSHIPS, TONES
+from pragmatics.config import EXPLANATION_LEVELS, LANGUAGES, RELATIONSHIPS, TONES, VOICE_RANGES
 from pragmatics.demo import DemoAdapter, DemoTranslator, SOURCE, TARGETS
 from pragmatics.emotion import EmotionDetector
 from pragmatics.interpreter import (
@@ -21,9 +26,11 @@ from pragmatics.pipeline import Sentence, run, validate_text
 from pragmatics.prosody import analyze_turn
 from pragmatics.speech import (
     CAPTION_WINDOW_SECONDS, MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS, MacVoice, SpeechError, WhisperTranscriber,
-    adjust_voice_pace, apply_vocal_emphasis, decode_live_phrase, load_recording, speak, speech_available, wav_base64,
+    adjust_voice_pace, apply_vocal_emphasis, decode_live_phrase, load_recording, resolve_voice_range, speak,
+    speech_available, wav_base64,
 )
 from pragmatics.translation import NLLB
+from pragmatics.validation import numbers
 from pragmatics.voice_match import MIN_PROFILE_SPEECH_SECONDS, VOICE_PROFILE_SECONDS, VoiceMatch
 
 
@@ -55,9 +62,33 @@ def describe_emotion(reading):
     }
 
 
+ASSISTANT_MESSAGES = {
+    "assistant_unavailable": "The assistant is off. Restart with ANTHROPIC_API_KEY set to enable it.",
+    "missing_api_key": "The assistant is off. Restart with ANTHROPIC_API_KEY set to enable it.",
+    "assistant_sdk_missing": "Install requirements-assistant.txt to enable the assistant.",
+    "credential_rejected": "The assistant key was rejected. Check ANTHROPIC_API_KEY.",
+    "rate_limited": "The assistant is rate limited. Try again shortly.",
+    "provider_unreachable": "Could not reach the assistant. Check the connection and try again.",
+    "provider_refusal": "The assistant declined this request.",
+    "model_abstained": "The assistant could not restate this faithfully at that level.",
+    "explanation_timed_out": "The simpler wording took too long for this turn.",
+    "empty_question": "Type a question first.",
+    "question_too_long": f"Keep the question under {MAX_QUESTION_CHARS} characters.",
+    "unsupported_level": "Select a supported explanation level.",
+    "unsupported_language": "Select a configured language.",
+    "empty_answer": "The assistant returned no answer. Try rewording the question.",
+    "translation_too_long": "This turn is too long to restate. Try a shorter turn.",
+    "empty_translation": "There is nothing to restate yet.",
+}
+
+
+def _lookup_message(reason):
+    return ASSISTANT_MESSAGES.get(reason, "The assistant could not complete this request.")
+
+
 def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, *,
               fast_whisper=False, whisper_turbo=False, fast_nllb=None, clone_executable=None,
-              native_voice_executable=None, warm=False):
+              native_voice_executable=None, warm=False, allow_assistant=True):
     import gradio as gr
 
     translator = DemoTranslator() if demo else NLLB(device, turn_beams=1, fast_model=fast_nllb)
@@ -69,6 +100,10 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
     system_voice = bool(transcriber and speech_available())
     voice_match = VoiceMatch(clone_executable) if transcriber and clone_executable else None
     mac_voice = MacVoice(native_voice_executable) if transcriber and native_voice_executable else None
+    assistant = ClaudeAssistant() if allow_assistant and not demo and assistant_available() else None
+    # Re-rendering runs beside playback so captions and audio are never delayed by it.
+    helpers = (ThreadPoolExecutor(max_workers=4, thread_name_prefix="click-assistant")
+               if assistant is not None else None)
 
     if warm and transcriber:
         def warm_recognizer():
@@ -102,6 +137,102 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
                     pass
 
             Thread(target=warm_voice, daemon=True).start()
+
+    def explain(text, language, level, *, source="", situation=""):
+        """Re-render an accepted translation for a different listener."""
+        if assistant is None:
+            return {"error": "assistant_unavailable"}
+        if level not in EXPLANATION_LEVELS or not EXPLANATION_LEVELS[level][1]:
+            return None
+        try:
+            candidate, model = assistant.simplify(translation=text, language=language, level=level,
+                                                  source=source, situation=situation)
+        except AssistantError as error:
+            return {"error": str(error)}
+        reason = validate_simplification(candidate)
+        if reason:
+            return {"error": reason}
+        rendered = candidate["rendered"].strip()
+        return {
+            "level": level,
+            "level_label": EXPLANATION_LEVELS[level][0],
+            "rendered": rendered,
+            "glossary": [{"term": entry["term"].strip(), "meaning": entry["meaning"].strip()}
+                         for entry in candidate["glossary"] if entry["term"].strip()][:12],
+            "omitted": candidate["omitted"].strip(),
+            # A surfaced caution, not a rejection: simpler wording may legitimately
+            # restate a quantity, and a silent fallback would hide that from a reader
+            # who needs the number.
+            "check_numbers": numbers(rendered) != numbers(text),
+            "response_model": model,
+        }
+
+    def explain_text(text, language, level, situation=""):
+        detail = explain(text or "", language, level, situation=situation or "")
+        if detail is None:
+            return "", {"status": "unchanged", "detail": "Select a level other than As spoken."}
+        if "error" in detail:
+            return "", {"status": "unavailable", "reason": detail["error"]}
+        return detail["rendered"], {"status": "rendered", **detail}
+
+    def look_up(question, language, place="", situation=""):
+        """Answer a practical question, searching the web when that changes the answer."""
+        if assistant is None:
+            return "", {"status": "unavailable", "reason": "assistant_unavailable"}, []
+        try:
+            answer, model = assistant.look_up(question=question or "", language=language,
+                                              place=place or "", situation=situation or "")
+        except AssistantError as error:
+            return "", {"status": "unavailable", "reason": str(error)}, []
+        return answer["answer"], {"status": "answered", "searched": answer["searched"],
+                                 "response_model": model}, answer["sources"]
+
+    def say_answer_in(answer, language):
+        """Repeat an answer already given, in another language."""
+        if assistant is None:
+            return "", {"status": "unavailable", "reason": "assistant_unavailable"}
+        try:
+            restated, model = assistant.say_in(answer=answer or "", language=language)
+        except AssistantError as error:
+            return "", {"status": "unavailable", "reason": str(error)}
+        return restated, {"status": "restated", "language": language, "response_model": model}
+
+    def live_answer_language(answer, language):
+        restated, detail = say_answer_in(answer, language)
+        return {"answer": restated, "language": language,
+                "error": "" if restated else _lookup_message(detail.get("reason", ""))}
+
+    def live_answer_audio(text, language):
+        """Read an answer aloud in the language it is written in."""
+        if language not in LANGUAGES:
+            return {"error": "Select a configured language."}
+        if not (text or "").strip():
+            return {"error": "There is nothing to read aloud yet."}
+        if len(text) > MAX_PASSAGE_CHARS:
+            return {"error": "This answer is too long to read aloud."}
+        try:
+            if mac_voice is not None:
+                audio = mac_voice.synthesize(text, language)
+            elif system_voice:
+                audio = speak(text, language)
+            else:
+                return {"error": "This host has no system voice for playback."}
+        except SpeechError as error:
+            return {"error": str(error)}
+        return {"audio": wav_base64(audio)}
+
+    def live_lookup(question, language, place="", situation=""):
+        answer, detail, sources = look_up(question, language, place, situation)
+        return {"answer": answer, "sources": sources, "searched": detail.get("searched", False),
+                "error": "" if answer else _lookup_message(detail.get("reason", ""))}
+
+    def live_explain(text, language, level, situation=""):
+        detail = explain(text or "", language, level, situation=situation or "")
+        if detail is None:
+            return {}
+        if "error" in detail:
+            return {"error": _lookup_message(detail["error"])}
+        return detail
 
     def analyze_emotion(source, before, after):
         try:
@@ -151,7 +282,7 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
         if not system_voice:
             return *result, None, "Translation ready."
         try:
-            audio = speak(adapted or baseline, tgt, locale, style=voice_style)
+            audio = speak(adapted or baseline, tgt, locale, style=voice_style, voice_range="auto")
         except SpeechError as error:
             return *result, None, str(error)
         audio = apply_vocal_emphasis(audio, voice_style)
@@ -198,7 +329,7 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
             translated = ""
         return {"transcript": transcript, "translation": translated, "source_language": src, "target_language": tgt}
 
-    def live_playback(translated, tgt, voice_mode, signal, style, tone, profile=""):
+    def live_playback(translated, tgt, voice_mode, signal, style, tone, profile="", voice_range=""):
         engine, notice, audio = "Expressive voice", "", None
         if voice_mode == "match":
             try:
@@ -221,12 +352,12 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
                 notice = f"{error} Playing the expressive voice."
         if audio is None and mac_voice:
             try:
-                audio = mac_voice.synthesize(translated, tgt, style=style)
+                audio = mac_voice.synthesize(translated, tgt, style=style, voice_range=voice_range)
             except SpeechError:
                 pass
         if audio is None:
             try:
-                audio = speak(translated, tgt, style=style)
+                audio = speak(translated, tgt, style=style, voice_range=voice_range)
             except SpeechError as error:
                 notice = str(error)
         return engine, notice, apply_vocal_emphasis(audio, style) if audio is not None else None
@@ -267,17 +398,33 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
         summary = describe_emotion(reading)[0] if reading.status in {"detected", "neutral"} else ""
         if src == tgt or not (system_voice or voice_match or mac_voice):
             voice_mode = "captions"
+        band = resolve_voice_range(settings.voice_range, style)
         common = {**direction, "transcript": transcript, "translation": translated, "emotion": summary,
                   "cues": caption_cues(changes, tgt), "voice_mode": voice_mode, "context_note": note,
-                  "tone": settings.tone, "tone_label": VOICE_TONES[settings.tone][0]}
+                  "tone": settings.tone, "tone_label": VOICE_TONES[settings.tone][0],
+                  "voice_band": band, "level": settings.level}
         text_done = perf_counter()
         yield {**common, "stage": "translated"}
+        pending = None
+        if assistant is not None and src != tgt and settings.level != "as_spoken":
+            pending = helpers.submit(explain, translated, tgt, settings.level,
+                                     source=transcript, situation=settings.situation)
         engine, notice, audio = "", "", None
         if voice_mode != "captions":
             reference = profile if voice_mode == "match" and src == settings.profile_language else ""
-            engine, notice, audio = live_playback(translated, tgt, voice_mode, signal, style, settings.tone, reference)
+            engine, notice, audio = live_playback(translated, tgt, voice_mode, signal, style,
+                                                  settings.tone, reference, settings.voice_range)
+        explanation = {}
+        if pending is not None:
+            try:
+                explanation = pending.result(timeout=25) or {}
+            except FutureTimeout:
+                explanation = {"error": "explanation_timed_out"}
+            if "error" in explanation:
+                explanation = {"error": _lookup_message(explanation["error"])}
         yield {**common, "stage": "ready", "voice_engine": engine if audio is not None else "",
                "audio": wav_base64(audio) if audio is not None else "", "playback_error": notice,
+               "explanation": explanation,
                "timings_ms": {"recognition": round((asr_done - started) * 1000),
                               "nllb": round((nllb_done - asr_done) * 1000),
                               "text_ready": round((text_done - started) * 1000),
@@ -289,7 +436,7 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
     live_js = (assets / "live.js").read_text(encoding="utf-8") if transcriber else None
     live_css = (assets / "live.css").read_text(encoding="utf-8") if transcriber else None
 
-    with gr.Blocks(title="Say Across", analytics_enabled=False, css=live_css,
+    with gr.Blocks(title="Click", analytics_enabled=False, css=live_css,
                    delete_cache=(300, 1800), js=live_js) as ui:
         if transcriber:
             def options(selected):
@@ -311,6 +458,13 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
                 language_count=len(LANGUAGES), source_options=options("eng_Latn"),
                 target_options=options("spa_Latn"), playback_options=playback_options,
                 tone_options="".join(f'<option value="{key}">{label}</option>' for key, (label, _) in VOICE_TONES.items()),
+                voice_range_options="".join(f'<option value="{escape(key)}">{escape(label)}</option>'
+                                            for key, label in VOICE_RANGES.items()),
+                level_options="".join(f'<option value="{escape(key)}">{escape(label)}</option>'
+                                      for key, (label, _) in EXPLANATION_LEVELS.items()),
+                assistant_visibility="" if assistant else "hidden",
+                playback_visibility="" if (system_voice or mac_voice) else "hidden",
+                question_limit=MAX_QUESTION_CHARS,
                 relationship_options="".join(f'<option value="{key}">{key.title()}</option>' for key in RELATIONSHIPS),
                 remote_option=(
                     '<label class="say-check"><input type="checkbox" data-live="remote"> '
@@ -328,6 +482,32 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
                 draft_caption, [pcm, live_src, live_tgt, live_settings], reply, api_name="live_caption",
                 show_api=False, concurrency_id="caption_draft",
             )
+            if assistant is not None:
+                ask_inputs = [gr.Textbox(visible=False) for _ in range(4)]
+                ask_reply = gr.JSON(visible=False)
+                gr.Button(visible=False).click(
+                    live_lookup, ask_inputs, ask_reply, api_name="live_lookup", show_api=False,
+                    concurrency_id="assistant", concurrency_limit=2,
+                )
+                answer_inputs = [gr.Textbox(visible=False) for _ in range(2)]
+                answer_reply = gr.JSON(visible=False)
+                gr.Button(visible=False).click(
+                    live_answer_language, answer_inputs, answer_reply,
+                    api_name="live_answer_language", show_api=False,
+                    concurrency_id="assistant", concurrency_limit=2,
+                )
+                speech_inputs = [gr.Textbox(visible=False) for _ in range(2)]
+                speech_reply = gr.JSON(visible=False)
+                gr.Button(visible=False).click(
+                    live_answer_audio, speech_inputs, speech_reply,
+                    api_name="live_answer_audio", show_api=False, concurrency_id="translation",
+                )
+                explain_inputs = [gr.Textbox(visible=False) for _ in range(4)]
+                explain_reply = gr.JSON(visible=False)
+                gr.Button(visible=False).click(
+                    live_explain, explain_inputs, explain_reply, api_name="live_explain", show_api=False,
+                    concurrency_id="assistant", concurrency_limit=2,
+                )
         if demo:
             gr.Markdown("**Offline fixture mode.** Outputs are fixed examples. Keep context and "
                         "preferences at their defaults to see both panes.")
@@ -374,6 +554,34 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
                 adapted = gr.Textbox(label="Context-aware adaptation", interactive=False)
             with gr.Accordion("Decision details and scores", open=False):
                 detail = gr.JSON(label="Translation decision and emotion analysis")
+            with gr.Accordion("Explain at another level", open=False, visible=assistant is not None):
+                gr.Markdown("Restates the translation above for a different listener. The original "
+                            "translation is kept and shown unchanged.")
+                with gr.Row():
+                    level = gr.Dropdown([(label, key) for key, (label, audience) in
+                                         EXPLANATION_LEVELS.items() if audience],
+                                        value="plain", label="Explanation level")
+                    restate = gr.Button("Restate translation")
+                restated = gr.Textbox(label="Restated translation", interactive=False, lines=4)
+                restated_detail = gr.JSON(label="Terms explained and what the simpler wording loses")
+            with gr.Accordion("Ask about where you are", open=False, visible=assistant is not None):
+                gr.Markdown("Asks Claude a practical question and searches the web when current or "
+                            "local facts would change the answer. Answers are informational only.")
+                question = gr.Textbox(label="Question", lines=2, max_lines=4,
+                                      placeholder="For example, how do I pay for a bus ticket here?")
+                with gr.Row():
+                    question_language = gr.Dropdown(languages, value="eng_Latn", label="Answer in")
+                    place = gr.Textbox(label="Where you are (optional)",
+                                       placeholder="For example, Athens, Greece")
+                ask = gr.Button("Ask")
+                answer = gr.Textbox(label="Answer", interactive=False, lines=8)
+                with gr.Row():
+                    answer_language = gr.Dropdown(languages, value="spa_Latn", label="Repeat the answer in")
+                    repeat = gr.Button("Repeat in this language")
+                repeated = gr.Textbox(label="The same answer, restated", interactive=False, lines=8)
+                with gr.Row():
+                    answer_sources = gr.JSON(label="Sources the answer used")
+                    answer_detail = gr.JSON(label="Lookup status")
             outputs = [baseline, adapted, emotion_summary, detail]
             text_inputs = [source, src, tgt, before, after, relationship, locale, tone, emotion, opt_in]
             if transcriber:
@@ -403,6 +611,21 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
                                   api_name="detect_emotion", concurrency_id="translation")
                 else:
                     inspect.click(analyze_emotion, [source, before, after], outputs, api_name="detect_emotion")
+            if assistant is not None:
+                def restate_translation(baseline_text, adapted_text, target, chosen, situation):
+                    text = (adapted_text or baseline_text or "").strip()
+                    if not text:
+                        return "", {"status": "input_error", "detail": "Translate a sentence first."}
+                    return explain_text(text, target, chosen, situation)
+
+                restate.click(restate_translation, [baseline, adapted, tgt, level, before],
+                              [restated, restated_detail], api_name="restate",
+                              concurrency_id="assistant", concurrency_limit=2)
+                ask.click(look_up, [question, question_language, place, before],
+                          [answer, answer_detail, answer_sources], api_name="look_up",
+                          concurrency_id="assistant", concurrency_limit=2)
+                repeat.click(say_answer_in, [answer, answer_language], [repeated, answer_detail],
+                             api_name="say_answer_in", concurrency_id="assistant", concurrency_limit=2)
     return ui
 
 
@@ -410,6 +633,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--no-emotion", action="store_true", help="Skip local emotion analysis.")
+    parser.add_argument("--no-assistant", action="store_true",
+                        help="Skip the optional Claude restating and lookup features.")
     parser.add_argument("--device", choices=["cpu", "cuda", "mps"], default="cpu")
     speech_models = parser.add_mutually_exclusive_group()
     speech_models.add_argument("--fast-whisper", action="store_true", help="Use cached Whisper Base on Apple Silicon.")
@@ -434,7 +659,8 @@ if __name__ == "__main__":
     build_app(args.demo, args.device, not args.no_emotion, allow_remote=not hosted,
               fast_whisper=args.fast_whisper, whisper_turbo=args.whisper_turbo,
               fast_nllb=args.fast_nllb, clone_executable=args.voice_engine,
-              native_voice_executable=args.native_voice, warm=args.warm
+              native_voice_executable=args.native_voice, warm=args.warm,
+              allow_assistant=not args.no_assistant and not hosted
               ).queue(max_size=16).launch(
         server_name=args.host, server_port=args.port, share=False, auth=auth, pwa=True, inbrowser=args.open_browser,
         favicon_path=Path(__file__).parent / "pragmatics" / "icon.svg", max_file_size=MAX_AUDIO_BYTES)

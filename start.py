@@ -1,4 +1,4 @@
-"""Set up and open a local copy of Say Across."""
+"""Set up and open a local copy of Click."""
 
 import argparse
 import os
@@ -15,17 +15,17 @@ def main():
     parser.add_argument("--no-browser", action="store_true", help="Print the link without opening a browser.")
     args = parser.parse_args()
     if sys.version_info[:2] != (3, 11):
-        parser.error("Use Python 3.11 to start Say Across. See START_HERE.md.")
+        parser.error("Use Python 3.11 to start Click. See START_HERE.md.")
 
     project = Path(__file__).resolve().parent
     environment = project / ".venv"
     executable = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     if not executable.is_file():
-        print("Creating a local Python environment for Say Across…", flush=True)
+        print("Creating a local Python environment for Click…", flush=True)
         venv.create(environment, with_pip=True)
 
     install = [str(executable), "-m", "pip", "--disable-pip-version-check", "install", "--quiet"]
-    print("Checking Say Across dependencies…", flush=True)
+    print("Checking Click dependencies…", flush=True)
     if args.demo:
         subprocess.run([*install, "gradio==5.49.1"], cwd=project, check=True)
     else:
@@ -34,6 +34,9 @@ def main():
             subprocess.run([*install, "--index-url", "https://download.pytorch.org/whl/cpu", "torch==2.8.0"],
                            cwd=project, check=True)
         subprocess.run([*install, "-r", "requirements.txt"], cwd=project, check=True)
+        if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+            # Only needed for the optional restating and lookup features.
+            subprocess.run([*install, "-r", "requirements-assistant.txt"], cwd=project, check=True)
 
     command = [str(executable), "-u", "app.py", "--port", str(args.port)]
     if args.demo:

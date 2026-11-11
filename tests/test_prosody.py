@@ -6,7 +6,11 @@ import numpy as np
 from pragmatics.captions import caption_cues
 from pragmatics.config import LANGUAGES
 from pragmatics.emotion import EmotionReading
-from pragmatics.prosody import LABELS, analyze_turn, delivery, detect_voice, features, load_model
+from pragmatics.config import HIGHER_PITCH_FLOOR_HZ, LOWER_PITCH_CEILING_HZ
+from pragmatics.interpreter import intended_delivery
+from pragmatics.prosody import (
+    LABELS, analyze_turn, delivery, detect_voice, features, load_model, pitch_voice_range, voice_pitch,
+)
 
 
 class ProsodyTests(TestCase):
@@ -97,3 +101,49 @@ class ProsodyTests(TestCase):
         model = load_model()
         self.assertTrue(set(model["dev_actors"]).isdisjoint(model["test_actors"]))
         self.assertGreater(model["train_rows"], 0)
+
+
+class VoiceRangeTests(TestCase):
+    @staticmethod
+    def voiced(f0, seconds=3):
+        """A pulse train whose period the autocorrelation can actually find."""
+        time = np.arange(16000 * seconds) / 16000
+        return 0.2 * np.sign(np.sin(2 * np.pi * f0 * time)) * (0.7 + 0.3 * np.sin(2 * np.pi * 3 * time))
+
+    def test_measured_pitch_tracks_the_recording(self):
+        for f0 in (105, 128, 198, 240):
+            measured, _ = voice_pitch(self.voiced(f0))
+            self.assertAlmostEqual(measured, f0, delta=3, msg=f"{f0} Hz was read as {measured}")
+
+    def test_bands_are_assigned_outside_the_overlap_and_abstain_inside_it(self):
+        self.assertEqual(voice_pitch(self.voiced(112))[1], "lower")
+        self.assertEqual(voice_pitch(self.voiced(215))[1], "higher")
+        # Adult speaking ranges overlap here, so no band is claimed.
+        self.assertEqual(voice_pitch(self.voiced(165))[1], "")
+
+    def test_thresholds_bound_the_decision(self):
+        self.assertEqual(pitch_voice_range(None), "")
+        self.assertEqual(pitch_voice_range(LOWER_PITCH_CEILING_HZ), "lower")
+        self.assertEqual(pitch_voice_range(HIGHER_PITCH_FLOOR_HZ), "higher")
+        self.assertEqual(pitch_voice_range(LOWER_PITCH_CEILING_HZ + 0.1), "")
+        self.assertEqual(pitch_voice_range(HIGHER_PITCH_FLOOR_HZ - 0.1), "")
+
+    def test_too_little_voiced_audio_abstains(self):
+        self.assertEqual(voice_pitch(np.zeros(32000)), (None, ""))
+        self.assertEqual(voice_pitch(self.voiced(120, seconds=0.2)), (None, ""))
+
+    def test_absolute_pitch_stays_out_of_the_classifier_features(self):
+        """The published voice model must keep seeing only clip-relative pitch."""
+        low, high = self.voiced(110), self.voiced(220)
+        self.assertAlmostEqual(voice_pitch(low)[0] - voice_pitch(high)[0], -110, delta=4)
+        # One octave apart, yet every classifier feature agrees: the 12-semitone
+        # difference is removed before _summarize sees the track.
+        np.testing.assert_allclose(features(low), features(high), atol=0.2)
+
+    def test_the_band_reaches_playback_on_the_delivery_controls(self):
+        self.assertEqual(delivery(self.voiced(115)).voice_range, "lower")
+        self.assertEqual(analyze_turn(self.voiced(225))[1].voice_range, "higher")
+
+    def test_an_explicit_tone_preset_keeps_the_measured_band(self):
+        measured = analyze_turn(self.voiced(115))[1]
+        self.assertEqual(intended_delivery(measured, "calm").voice_range, "lower")

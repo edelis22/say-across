@@ -1,4 +1,4 @@
-# Publish Say Across for review
+# Publish Click for review
 
 ## Publish the source and walkthrough on GitHub
 

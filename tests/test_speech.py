@@ -2,6 +2,8 @@ import asyncio
 import base64
 import importlib.util
 import json
+import subprocess
+from types import SimpleNamespace
 from unittest import TestCase, skipUnless
 from unittest.mock import patch
 
@@ -9,7 +11,10 @@ import numpy as np
 
 from pragmatics.emotion import EmotionReading
 from pragmatics.prosody import Delivery
-from pragmatics.speech import SpeechError, apply_vocal_emphasis, choose_spoken_language, decode_live_phrase
+from pragmatics.speech import (
+    SpeechError, VOICES, apply_vocal_emphasis, choose_spoken_language, decode_live_phrase,
+    installed_voices, resolve_voice_range, speak, voice_candidates,
+)
 from pragmatics.voice_match import _decode_profile
 
 
@@ -40,7 +45,8 @@ class VoiceTests(TestCase):
             recognizer.return_value.transcribe_audio.assert_called_once_with("PCM fixture", "eng_Latn")
             self.assertIn("vocal expression", prediction[3].lower())
             nllb.return_value.translate_turn.assert_called_once_with("Good morning.", "eng_Latn", "spa_Latn")
-            playback.assert_called_once_with("Buenos días.", "spa_Latn", "es-MX", style=style)
+            playback.assert_called_once_with("Buenos días.", "spa_Latn", "es-MX", style=style,
+                                             voice_range="auto")
 
     def test_unreadable_recording_clears_audio_and_skips_translation(self):
         from app import build_app
@@ -109,7 +115,8 @@ class VoiceTests(TestCase):
             _, fallback = handler.fn(encoded, "eng_Latn", "spa_Latn", "match")
             self.assertEqual(fallback["voice_engine"], "Expressive voice")
             self.assertIn("Matching failed.", fallback["playback_error"])
-            playback.assert_called_once_with("Buenos días.", "spa_Latn", style=style)
+            playback.assert_called_once_with("Buenos días.", "spa_Latn", style=style,
+                                             voice_range="auto")
 
     def test_draft_caption_translates_without_synthesizing_or_analyzing_tone(self):
         from app import build_app
@@ -263,3 +270,251 @@ class VoicePlaybackTests(TestCase):
         self.assertGreater(abs(int(down[0])), abs(int(down[-1])))
         self.assertLessEqual(np.abs(up.astype(np.int32)).max(), 32767)
         np.testing.assert_array_equal(np.sign(up), np.sign(samples))
+
+
+class VoiceSelectionTests(TestCase):
+    def setUp(self):
+        installed_voices.cache_clear()
+        self.addCleanup(installed_voices.cache_clear)
+
+    def test_the_installed_voice_listing_is_parsed(self):
+        listing = ("Alex                en_US    # Most people recognize me by my voice.\n"
+                   "Grandma (Spanish (Mexico))  es_MX    # Hola, soy Grandma.\n"
+                   "Ting-Ting           zh_CN    # 您好\n"
+                   "unparseable line without a locale\n")
+        with patch("pragmatics.speech.sys.platform", "darwin"), \
+                patch("pragmatics.speech.subprocess.run",
+                      return_value=SimpleNamespace(stdout=listing)):
+            self.assertEqual(installed_voices(),
+                             frozenset({"Alex", "Grandma (Spanish (Mexico))", "Ting-Ting"}))
+
+    def test_an_unreadable_listing_does_not_block_playback(self):
+        with patch("pragmatics.speech.sys.platform", "darwin"), \
+                patch("pragmatics.speech.subprocess.run", side_effect=OSError):
+            self.assertEqual(installed_voices(), frozenset())
+
+    def test_no_requested_range_keeps_the_previous_default_voice(self):
+        """Default playback must be byte-identical to the behaviour before ranges."""
+        with patch("pragmatics.speech.sys.platform", "darwin"), \
+                patch("pragmatics.speech.installed_voices", return_value=frozenset()):
+            for locale, voice in VOICES.items():
+                self.assertEqual(voice_candidates(locale, ""), (voice,))
+
+    def test_absent_candidates_are_skipped_and_the_default_comes_last(self):
+        with patch("pragmatics.speech.sys.platform", "darwin"), \
+                patch("pragmatics.speech.installed_voices",
+                      return_value=frozenset({"Tom", "Samantha", "Kate"})):
+            # Alex is not installed on this host, so Tom is tried first.
+            self.assertEqual(voice_candidates("en-US", "lower"), ("Tom", "Samantha"))
+            self.assertEqual(voice_candidates("en-US", "higher"), ("Samantha",))
+            # Daniel is the locale default and stays last even when absent.
+            self.assertEqual(voice_candidates("en-GB", "higher"), ("Kate", "Daniel"))
+
+    def test_espeak_renders_a_band_as_a_speaker_variant(self):
+        with patch("pragmatics.speech.sys.platform", "linux"):
+            self.assertEqual(voice_candidates("de-DE", "lower"), ("de+m3", "de"))
+            self.assertEqual(voice_candidates("de-DE", "higher"), ("de+f3", "de"))
+            self.assertEqual(voice_candidates("de-DE", ""), ("de",))
+            self.assertEqual(voice_candidates("xx-XX", "lower"), ())
+
+    def test_the_band_comes_from_the_recording_only_in_auto(self):
+        measured = Delivery(168, 0, 45, 0.4, (), "higher")
+        self.assertEqual(resolve_voice_range("auto", measured), "higher")
+        self.assertEqual(resolve_voice_range("lower", measured), "lower")
+        self.assertEqual(resolve_voice_range("default", measured), "")
+        self.assertEqual(resolve_voice_range("auto", Delivery(168, 0, 45, 0.4)), "")
+        self.assertEqual(resolve_voice_range("auto", None), "")
+
+    def test_playback_falls_back_when_a_matched_voice_cannot_render(self):
+        attempted = []
+
+        def run(command, **kwargs):
+            voice = command[command.index("-v") + 1]
+            attempted.append(voice)
+            if voice != "Samantha":
+                raise subprocess.CalledProcessError(1, command)
+            return SimpleNamespace(stdout=b"")
+
+        with patch("pragmatics.speech.sys.platform", "darwin"), \
+                patch("pragmatics.speech.installed_voices",
+                      return_value=frozenset({"Alex", "Tom", "Samantha"})), \
+                patch("pragmatics.speech.subprocess.run", side_effect=run), \
+                patch("pragmatics.speech.read_pcm", return_value=(22050, b"fixture")):
+            self.assertEqual(speak("Hello.", "eng_Latn", voice_range="lower"), (22050, b"fixture"))
+        self.assertEqual(attempted, ["Alex", "Tom", "Samantha"])
+
+    def test_playback_reports_the_default_voice_when_every_candidate_fails(self):
+        with patch("pragmatics.speech.sys.platform", "darwin"), \
+                patch("pragmatics.speech.installed_voices", return_value=frozenset({"Alex"})), \
+                patch("pragmatics.speech.subprocess.run", side_effect=OSError):
+            with self.assertRaises(SpeechError) as caught:
+                speak("Hello.", "eng_Latn", voice_range="lower")
+        self.assertIn("Samantha", str(caught.exception))
+
+
+@skipUnless(importlib.util.find_spec("gradio"), "Install Gradio for assistant UI tests.")
+class AssistantFeatureTests(TestCase):
+    """The restating and lookup features sit beside the translation, never inside it."""
+
+    def setUp(self):
+        self.enterContext(patch("app.speech_available", return_value=True))
+        self.enterContext(patch("app.assistant_available", return_value=True))
+        self.assistant = self.enterContext(patch("app.ClaudeAssistant")).return_value
+
+    def build(self, **kwargs):
+        from app import build_app
+
+        self.enterContext(patch("app.WhisperTranscriber")).return_value \
+            .transcribe_audio.return_value = "Le haremos una endoscopia."
+        self.enterContext(patch("app.NLLB")).return_value \
+            .translate_turn.return_value = "We will perform an endoscopy on you."
+        self.enterContext(patch("app.speak", return_value=(22050, np.array([0, 1], dtype="<i2"))))
+        return build_app(allow_remote=False, **kwargs)
+
+    @staticmethod
+    def live_turn(ui, settings):
+        handler = next(fn for fn in ui.fns.values() if fn.api_name == "live_phrase")
+        encoded = base64.b64encode(b"\x00\x01" * 8000).decode()
+        events = list(handler.fn(encoded, "spa_Latn", "eng_Latn", "expressive",
+                                 json.dumps(settings), ""))
+        return events[0], events[-1]
+
+    def test_a_turn_is_restated_beside_the_translation_at_the_selected_level(self):
+        self.assistant.simplify.return_value = ({
+            "rendered": "We want to look inside your stomach with a small camera.",
+            "glossary": [{"term": "endoscopy", "meaning": "a camera on a thin tube"}],
+            "omitted": "", "abstain": False,
+        }, "claude-opus-5-5-fixture")
+        preview, result = self.live_turn(self.build(), {"level": "plain"})
+        self.assertEqual(preview["stage"], "translated")
+        self.assertNotIn("explanation", preview, "captions must not wait for the restating")
+        # The translation itself is untouched; the simpler wording is additional.
+        self.assertEqual(result["translation"], "We will perform an endoscopy on you.")
+        self.assertEqual(result["explanation"]["rendered"],
+                         "We want to look inside your stomach with a small camera.")
+        self.assertEqual(result["explanation"]["glossary"],
+                         [{"term": "endoscopy", "meaning": "a camera on a thin tube"}])
+        self.assertFalse(result["explanation"]["check_numbers"])
+        request = self.assistant.simplify.call_args.kwargs
+        self.assertEqual(request["translation"], "We will perform an endoscopy on you.")
+        self.assertEqual(request["source"], "Le haremos una endoscopia.")
+        self.assertEqual((request["language"], request["level"]), ("eng_Latn", "plain"))
+
+    def test_the_default_level_leaves_the_existing_path_completely_untouched(self):
+        preview, result = self.live_turn(self.build(), {})
+        self.assertEqual(result["translation"], "We will perform an endoscopy on you.")
+        self.assertEqual(result["explanation"], {})
+        self.assertEqual(result["level"], "as_spoken")
+        self.assistant.simplify.assert_not_called()
+
+    def test_changed_quantities_are_flagged_rather_than_hidden(self):
+        self.assistant.simplify.return_value = (
+            {"rendered": "Take 3 tablets.", "glossary": [], "omitted": "", "abstain": False}, "fixture")
+        with patch("app.NLLB") as nllb:
+            nllb.return_value.translate_turn.return_value = "Take 2 tablets."
+            _, result = self.live_turn(self.build(), {"level": "simple"})
+        self.assertTrue(result["explanation"]["check_numbers"])
+        self.assertEqual(result["explanation"]["rendered"], "Take 3 tablets.")
+
+    def test_an_abstention_keeps_the_translation_and_explains_itself(self):
+        self.assistant.simplify.return_value = (
+            {"rendered": "", "glossary": [], "omitted": "", "abstain": True}, "fixture")
+        _, result = self.live_turn(self.build(), {"level": "simple"})
+        self.assertEqual(result["translation"], "We will perform an endoscopy on you.")
+        self.assertIn("faithfully", result["explanation"]["error"])
+
+    def test_a_provider_failure_is_reported_in_plain_words(self):
+        from pragmatics.assistant import AssistantError
+
+        self.assistant.simplify.side_effect = AssistantError("provider_unreachable")
+        _, result = self.live_turn(self.build(), {"level": "plain"})
+        self.assertEqual(result["translation"], "We will perform an endoscopy on you.")
+        self.assertIn("Could not reach", result["explanation"]["error"])
+
+    def test_a_lookup_returns_the_answer_in_the_asked_language_with_its_sources(self):
+        self.assistant.look_up.return_value = (
+            {"answer": "Buy a ticket at the kiosk before boarding.",
+             "sources": [{"url": "https://example.gr/tickets", "title": "Tickets"}],
+             "searched": True}, "claude-opus-5-5-fixture")
+        ui = self.build()
+        handler = next(fn for fn in ui.fns.values() if fn.api_name == "live_lookup")
+        result = handler.fn("How do I pay for a bus?", "eng_Latn", "Athens, Greece", "at the bus stop")
+        self.assertEqual(result["answer"], "Buy a ticket at the kiosk before boarding.")
+        self.assertEqual(result["sources"], [{"url": "https://example.gr/tickets", "title": "Tickets"}])
+        self.assertTrue(result["searched"])
+        self.assertEqual(result["error"], "")
+        request = self.assistant.look_up.call_args.kwargs
+        self.assertEqual(request["question"], "How do I pay for a bus?")
+        self.assertEqual(request["language"], "eng_Latn")
+        self.assertEqual(request["place"], "Athens, Greece")
+
+    def test_an_answer_can_be_repeated_in_another_language(self):
+        self.assistant.say_in.return_value = ("Compra el billete antes de subir.", "fixture")
+        ui = self.build()
+        handler = next(fn for fn in ui.fns.values() if fn.api_name == "live_answer_language")
+        result = handler.fn("Buy a ticket before you board.", "spa_Latn")
+        self.assertEqual(result["answer"], "Compra el billete antes de subir.")
+        self.assertEqual(result["language"], "spa_Latn")
+        self.assertEqual(result["error"], "")
+        self.assertEqual(self.assistant.say_in.call_args.kwargs,
+                         {"answer": "Buy a ticket before you board.", "language": "spa_Latn"})
+        self.assistant.look_up.assert_not_called()
+
+    def test_an_answer_is_read_aloud_in_the_language_it_is_written_in(self):
+        ui = self.build()
+        handler = next(fn for fn in ui.fns.values() if fn.api_name == "live_answer_audio")
+        with patch("app.speak", return_value=(22050, np.array([0, 1], dtype="<i2"))) as playback:
+            result = handler.fn("Compra el billete.", "spa_Latn")
+        self.assertTrue(result["audio"])
+        playback.assert_called_once_with("Compra el billete.", "spa_Latn")
+
+    def test_reading_aloud_refuses_empty_and_oversized_text(self):
+        from pragmatics.assistant import MAX_PASSAGE_CHARS
+
+        ui = self.build()
+        handler = next(fn for fn in ui.fns.values() if fn.api_name == "live_answer_audio")
+        self.assertIn("nothing", handler.fn("  ", "spa_Latn")["error"])
+        self.assertIn("too long", handler.fn("x" * (MAX_PASSAGE_CHARS + 1), "spa_Latn")["error"])
+        self.assertIn("configured language", handler.fn("Hola.", "xxx_Xxxx")["error"])
+
+    def test_a_failed_lookup_reports_a_readable_reason(self):
+        from pragmatics.assistant import AssistantError
+
+        self.assistant.look_up.side_effect = AssistantError("rate_limited")
+        ui = self.build()
+        handler = next(fn for fn in ui.fns.values() if fn.api_name == "live_lookup")
+        result = handler.fn("Anything?", "eng_Latn", "", "")
+        self.assertEqual(result["answer"], "")
+        self.assertIn("rate limited", result["error"])
+
+    def test_the_text_tools_restate_the_adapted_translation_when_there_is_one(self):
+        self.assistant.simplify.return_value = (
+            {"rendered": "A camera looks inside.", "glossary": [], "omitted": "", "abstain": False}, "fixture")
+        ui = self.build()
+        handler = next(fn for fn in ui.fns.values() if fn.api_name == "restate")
+        rendered, detail = handler.fn("Literal wording.", "Adapted wording.", "eng_Latn", "plain", "")
+        self.assertEqual(rendered, "A camera looks inside.")
+        self.assertEqual(detail["status"], "rendered")
+        self.assertEqual(self.assistant.simplify.call_args.kwargs["translation"], "Adapted wording.")
+
+    def test_the_text_tools_need_a_translation_first(self):
+        ui = self.build()
+        handler = next(fn for fn in ui.fns.values() if fn.api_name == "restate")
+        rendered, detail = handler.fn("", "", "eng_Latn", "plain", "")
+        self.assertEqual(rendered, "")
+        self.assertEqual(detail["status"], "input_error")
+        self.assistant.simplify.assert_not_called()
+
+
+@skipUnless(importlib.util.find_spec("gradio"), "Install Gradio for assistant UI tests.")
+class AssistantDisabledTests(TestCase):
+    def test_without_a_credential_the_features_are_absent_rather_than_broken(self):
+        from app import build_app
+
+        with patch("app.speech_available", return_value=True), patch("app.WhisperTranscriber"), \
+                patch("app.NLLB"), patch("app.assistant_available", return_value=False):
+            ui = build_app(allow_remote=False)
+        names = {fn.api_name for fn in ui.fns.values()}
+        self.assertNotIn("live_lookup", names)
+        self.assertNotIn("restate", names)
+        self.assertIn("live_phrase", names)

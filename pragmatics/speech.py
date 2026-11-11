@@ -4,10 +4,12 @@ import atexit
 import base64
 import binascii
 from contextlib import suppress
+from functools import lru_cache
 from io import BytesIO
 import json
 import os
 from pathlib import Path
+import re
 import select
 import shutil
 import subprocess
@@ -49,6 +51,34 @@ VOICES = {
 }
 
 
+# Candidate system voices by pitch band. The first name installed on the host
+# wins; the locale's entry in VOICES is always the final fallback, so playback
+# never fails because a candidate is missing. These describe vocal range only.
+VOICE_CANDIDATES = {
+    "en-US": {"lower": ("Alex", "Tom", "Aaron", "Fred"),
+              "higher": ("Samantha", "Allison", "Ava", "Susan")},
+    "en-GB": {"lower": ("Daniel", "Oliver", "Arthur"),
+              "higher": ("Kate", "Serena", "Stephanie")},
+    "es-MX": {"lower": ("Juan", "Carlos"), "higher": ("Paulina", "Angelica")},
+    "es-ES": {"lower": ("Jorge", "Diego"), "higher": ("M\u00f3nica", "Monica")},
+    "el-GR": {"lower": ("Nikos",), "higher": ("Melina",)},
+    "el-CY": {"lower": ("Nikos",), "higher": ("Melina",)},
+    "ja-JP": {"lower": ("Otoya", "Hattori"), "higher": ("Kyoko", "O-ren")},
+    "fr-FR": {"lower": ("Thomas", "Nicolas"), "higher": ("Audrey", "Aur\u00e9lie", "Marie")},
+    "fr-CA": {"lower": ("Nicolas", "Felix"), "higher": ("Am\u00e9lie", "Amelie", "Chantal")},
+    "de-DE": {"lower": ("Markus", "Yannick"), "higher": ("Anna", "Petra", "Helena")},
+    "it-IT": {"lower": ("Luca", "Paolo"), "higher": ("Alice", "Federica")},
+    "pt-BR": {"lower": ("Felipe", "Ricardo"), "higher": ("Luciana", "Fernanda")},
+    "pt-PT": {"lower": ("Joaquim", "Tiago"), "higher": ("Joana", "Catarina")},
+    "nl-NL": {"lower": ("Xander",), "higher": ("Claire", "Ellen")},
+    "zh-CN": {"lower": ("Li-mu", "Liangliang"), "higher": ("Tingting", "Ting-Ting", "Binbin")},
+    "ko-KR": {"lower": ("Minsu", "Jiho"), "higher": ("Yuna", "Sora")},
+    "ar-001": {"lower": ("Majed", "Maged", "Tarik"), "higher": ("Laila", "Amira")},
+}
+
+# eSpeak NG renders a pitch band with a speaker variant on any installed language.
+LINUX_VOICE_VARIANTS = {"lower": "+m3", "higher": "+f3"}
+
 LINUX_VOICES = {
     "en-US": "en-us", "en-GB": "en-gb", "es-MX": "es-419", "es-ES": "es",
     "el-GR": "el", "el-CY": "el", "ja-JP": "ja",
@@ -60,6 +90,50 @@ LINUX_VOICES = {
 
 def speech_available():
     return sys.platform == "darwin" or shutil.which("espeak-ng") is not None
+
+
+@lru_cache(maxsize=1)
+def installed_voices():
+    """Names of the system voices present on this Mac.
+
+    An empty result means the list could not be read, not that no voice
+    exists, so callers fall back to trying each candidate in turn.
+    """
+    if sys.platform != "darwin":
+        return frozenset()
+    try:
+        listing = subprocess.run(["/usr/bin/say", "-v", "?"], check=True,
+                                 capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return frozenset()
+    return frozenset(match[1] for match in
+                     (re.match(r"^(.+?)\s{2,}[a-z]{2}(?:[-_][A-Za-z]{2,})?\s*#", line)
+                      for line in listing.splitlines()) if match)
+
+
+def resolve_voice_range(requested, style):
+    """Turn the playback setting into a pitch band, or "" for the locale default."""
+    if requested in ("lower", "higher"):
+        return requested
+    if requested == "auto":
+        return getattr(style, "voice_range", "") or ""
+    return ""
+
+
+def voice_candidates(locale, voice_range):
+    """Ordered voices to attempt for a locale, default last."""
+    default = (VOICES if sys.platform == "darwin" else LINUX_VOICES).get(locale)
+    if sys.platform != "darwin":
+        variant = LINUX_VOICE_VARIANTS.get(voice_range)
+        if not default:
+            return ()
+        return (f"{default}{variant}", default) if variant else (default,)
+    names = VOICE_CANDIDATES.get(locale, {}).get(voice_range, ())
+    present = installed_voices()
+    if present:
+        names = tuple(name for name in names if name in present)
+    ordered = [*names, default] if default else list(names)
+    return tuple(dict.fromkeys(name for name in ordered if name))
 
 
 class SpeechError(RuntimeError):
@@ -138,12 +212,16 @@ class MacVoice(SpeechWorker):
             except SpeechError:
                 pass
 
-    def synthesize(self, text, target, locale="", *, style=None):
+    def synthesize(self, text, target, locale="", *, style=None, voice_range=""):
         locale = locale or LANGUAGES[target][2][0]
+        candidates = voice_candidates(locale, resolve_voice_range(voice_range, style))
         return self.audio({
             "text": text, "locale": "el-GR" if locale == "el-CY" else locale,
             "rate": style.rate if style else 168,
             "pitch_offset": style.pitch_offset if style else 0,
+            # The renderer falls back to the locale's own default voice when the
+            # requested name is not installed.
+            "voice": candidates[0] if candidates else "",
         }, timeout=20)
 
 
@@ -257,7 +335,7 @@ class WhisperTranscriber:
         config = (snapshot / "config.json").resolve(strict=True)
         weights = (snapshot / "model.safetensors").resolve(strict=True)
         # mlx-whisper 0.4.3 reads the same tensors under a different filename.
-        self._mlx_staging = TemporaryDirectory(prefix="say-across-whisper-")
+        self._mlx_staging = TemporaryDirectory(prefix="click-whisper-")
         directory = Path(self._mlx_staging.name)
         (directory / "config.json").symlink_to(config)
         (directory / "weights.safetensors").symlink_to(weights)
@@ -345,31 +423,40 @@ class WhisperTranscriber:
         return text
 
 
-def speak(text, target_language, locale="", *, style=None):
+def speak(text, target_language, locale="", *, style=None, voice_range=""):
     locale = locale or LANGUAGES[target_language][2][0]
     mac = sys.platform == "darwin"
-    voice = (VOICES if mac else LINUX_VOICES).get(locale)
-    if not voice:
+    candidates = voice_candidates(locale, resolve_voice_range(voice_range, style))
+    if not candidates:
         raise SpeechError("Playback unavailable for the selected locale.")
-    try:
+
+    def render(voice):
         with TemporaryDirectory(prefix="polyglot-output-") as directory:
             path = Path(directory) / "translation.wav"
+            spoken = text
             if mac:
                 command = ["/usr/bin/say", "-v", voice, "-o", str(path), "--file-format=WAVE",
                            "--data-format=LEI16@22050"]
-                text = text.replace("[[", "[ [")
+                spoken = spoken.replace("[[", "[ [")
                 if style is not None:
                     command.extend(["-r", str(style.rate)])
-                    text = f"[[pmod {style.pitch_range}]] [[pbas {style.pitch_offset:+d}]] {text}"
+                    spoken = f"[[pmod {style.pitch_range}]] [[pbas {style.pitch_offset:+d}]] {spoken}"
             else:
                 command = ["espeak-ng", "--stdin", "-b", "1", "-v", voice, "-w", str(path)]
                 if style is not None:
                     command.extend(["-s", str(style.rate), "-p", str(50 + style.pitch_offset)])
-            subprocess.run(command, input=text.encode("utf-8"),
+            subprocess.run(command, input=spoken.encode("utf-8"),
                            check=True, capture_output=True, timeout=25)
             return read_pcm(path, max_seconds=300)
-    except (OSError, subprocess.SubprocessError, wave.Error, EOFError, SpeechError):
-        raise SpeechError(f"Playback unavailable. Check that voice {voice} is installed.") from None
+
+    # A matched voice is a preference, never a reason to lose playback, so each
+    # candidate is attempted and the locale default is always last.
+    for voice in candidates:
+        try:
+            return render(voice)
+        except (OSError, subprocess.SubprocessError, wave.Error, EOFError, SpeechError):
+            continue
+    raise SpeechError(f"Playback unavailable. Check that voice {candidates[-1]} is installed.")
 
 
 def decode_live_phrase(encoded, *, max_seconds=MAX_AUDIO_SECONDS):

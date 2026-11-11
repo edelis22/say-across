@@ -5,7 +5,7 @@ import json
 import re
 import unicodedata
 
-from .config import LANGUAGES, RELATIONSHIPS
+from .config import EXPLANATION_LEVELS, LANGUAGES, RELATIONSHIPS, VOICE_RANGES
 
 VOICE_TONES = {
     "auto": ("Match delivery", None),
@@ -64,6 +64,8 @@ class InterpreterSettings:
     situation: str = ""
     remote: bool = False
     profile_language: str = ""
+    level: str = "as_spoken"
+    voice_range: str = "auto"
 
     @classmethod
     def parse(cls, payload):
@@ -80,6 +82,8 @@ class InterpreterSettings:
                 or type(settings.tone) is not str or settings.tone not in VOICE_TONES
                 or type(settings.profile_language) is not str
                 or (settings.profile_language and settings.profile_language not in LANGUAGES)
+                or type(settings.level) is not str or settings.level not in EXPLANATION_LEVELS
+                or type(settings.voice_range) is not str or settings.voice_range not in VOICE_RANGES
                 or settings.relationship not in RELATIONSHIPS):
             raise ValueError("Invalid conversation settings.")
         return settings

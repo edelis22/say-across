@@ -46,7 +46,7 @@ class LiveChecks(TestCase):
     @skipUnless(importlib.util.find_spec("gradio"), "Install pinned Gradio for UI construction.")
     def test_gradio_builds(self):
         from app import build_app
-        self.assertIn("Say Across", build_app(demo=True).title)
+        self.assertIn("Click", build_app(demo=True).title)
 
     @skipUnless(importlib.util.find_spec("gradio"), "Install pinned Gradio for endpoint checks.")
     def test_gradio_emotion_endpoint(self):

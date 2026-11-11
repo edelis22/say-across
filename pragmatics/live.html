@@ -2,7 +2,7 @@
          data-profile-seconds="{profile_seconds}" data-profile-speech-seconds="{profile_speech_seconds}" data-state="ready">
   <header class="say-brand">
     <span class="say-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 13v6m5-10v14m5-18v22m5-18v14m5-10v6"/></svg></span>
-    <div><h1>Say Across</h1><p>Speak, read, and listen across {language_count} languages.</p></div>
+    <div><h1>Click</h1><p>Speak, read, ask, and listen across {language_count} languages.</p></div>
   </header>
 
   <section class="say-card say-captions" aria-labelledby="say-caption-heading">
@@ -19,6 +19,12 @@
         <div data-live="caption-translated">
           <p class="say-caption-label" data-live="caption-target-label">Translation</p>
           <p class="say-caption-target" data-live="caption-target" dir="auto"></p>
+        </div>
+        <div data-live="caption-explained" hidden>
+          <p class="say-caption-label" data-live="caption-explained-label">Simpler wording</p>
+          <p class="say-caption-target say-caption-explained" data-live="caption-explained-text" dir="auto"></p>
+          <ul class="say-glossary" data-live="caption-glossary" role="list"></ul>
+          <p class="say-help" data-live="caption-explained-note"></p>
         </div>
         <p class="say-caption-error" data-live="caption-error" hidden></p>
         <div class="say-caption-cue-group" data-live="caption-cue-group" hidden>
@@ -62,13 +68,16 @@
         <label>Spoken tone
           <select data-live="tone">{tone_options}</select>
         </label>
+        <label>Voice range
+          <select data-live="voice-range">{voice_range_options}</select>
+        </label>
         <label>Pause before translation
           <select data-live="pause"><option value="0.5">0.5 seconds · quick</option><option value="0.75" selected>0.75 seconds</option><option value="1">1 second</option><option value="5">5 seconds</option><option value="7">7 seconds</option><option value="10">10 seconds</option></select>
         </label>
         <button type="button" class="say-end" data-live="stop" disabled hidden>Turn mic off</button>
       </div>
       <p class="say-help" data-live="same-language" hidden>Same-language sessions use captions only.</p>
-      <p class="say-help say-voice-help">Spoken playback uses pitch, pace, and emphasis from the recording.</p>
+      <p class="say-help say-voice-help">Spoken playback uses pitch, pace, and emphasis from the recording. <strong>Voice range · Match speaker</strong> measures the speaking pitch and picks a closer system voice.</p>
       <details class="say-context say-profile" {profile_visibility}>
         <summary>Personal voice profile</summary>
         <p class="say-help">Record {profile_seconds} seconds of your own voice. The sample stays in this tab between turns.</p>
@@ -81,6 +90,41 @@
         <progress data-live="profile-progress" aria-label="Voice sample recording" max="1" value="0" hidden></progress>
         <p class="say-help" data-live="profile-prompt" hidden>Try saying “I’m glad we have time to talk today. What should we try next? I think this is a good place to start.”</p>
         <p class="say-help" data-live="profile-status" role="status">Ready to record a voice sample.</p>
+      </details>
+      <details class="say-context say-assistant" {assistant_visibility}>
+        <summary>Understanding help</summary>
+        <p class="say-help">Restates each completed turn for a different listener, and answers practical
+          questions about where you are. Both send text to Claude and are informational only.</p>
+        <label>Explanation level<select data-live="level">{level_options}</select></label>
+        <p class="say-help">Any level other than <strong>As spoken</strong> adds a restated version under each
+          translation. The translation itself is never replaced.</p>
+        <label>Ask a question
+          <input data-live="question" type="text" maxlength="{question_limit}"
+                 placeholder="For example, how do I pay for a bus ticket here?">
+        </label>
+        <label>Where you are (optional)
+          <input data-live="place" type="text" maxlength="300" placeholder="For example, Athens, Greece">
+        </label>
+        <div class="say-profile-actions">
+          <button class="say-end" type="button" data-live="ask">Ask</button>
+          <button class="say-end" type="button" data-live="ask-clear" disabled>Clear answer</button>
+        </div>
+        <p class="say-help" data-live="ask-status" role="status">Ask about a place, a form, or a procedure.</p>
+        <div class="say-answer-group" data-live="ask-answer-group" hidden>
+          <p class="say-caption-label" data-live="ask-answer-label">Answer</p>
+          <p class="say-answer" data-live="ask-answer" dir="auto"></p>
+          <ul class="say-sources" data-live="ask-sources" aria-label="Sources" role="list"></ul>
+          <div class="say-answer-actions">
+            <label>Repeat it in<select data-live="answer-language">{target_options}</select></label>
+            <button class="say-end" type="button" data-live="answer-repeat">Repeat</button>
+            <button class="say-end" type="button" data-live="answer-speak" {playback_visibility}>Read aloud</button>
+          </div>
+          <p class="say-help" data-live="answer-status" role="status"></p>
+          <div data-live="answer-repeated-group" hidden>
+            <p class="say-caption-label" data-live="answer-repeated-label">The same answer</p>
+            <p class="say-answer" data-live="answer-repeated" dir="auto"></p>
+          </div>
+        </div>
       </details>
       <details class="say-context">
         <summary>Conversation context</summary>

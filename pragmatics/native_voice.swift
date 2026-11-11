@@ -6,12 +6,20 @@ struct Turn: Decodable {
     let locale: String
     let rate: Float
     let pitch_offset: Float
+    let voice: String?
 }
 
 let speaker = AVSpeechSynthesizer()
 
 func render(_ turn: Turn) -> [String: Any] {
-    guard let voice = AVSpeechSynthesisVoice(language: turn.locale) else {
+    // An unknown or absent name falls back to the locale's default voice.
+    let language = String(turn.locale.prefix(2))
+    let requested = turn.voice.flatMap { name in
+        name.isEmpty ? nil : AVSpeechSynthesisVoice.speechVoices().first {
+            $0.name == name && $0.language.hasPrefix(language)
+        }
+    }
+    guard let voice = requested ?? AVSpeechSynthesisVoice(language: turn.locale) else {
         return ["error": "voice unavailable"]
     }
     let utterance = AVSpeechUtterance(string: turn.text)

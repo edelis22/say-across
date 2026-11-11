@@ -2,7 +2,7 @@
 
 ElliQ’s user guide describes translation for words and short phrases, and its FAQ describes a conversational back-and-forth. The design goal here is a shorter gap between speakers while preserving the completed utterance. [ElliQ companion guide](https://tips.elliq.com/) · [ElliQ FAQ](https://elliq.com/pages/faqs)
 
-Say Across prepares eligible local turns of up to eight seconds after the first quarter second of detected quiet. It retains the same audio used by the normal turn path and holds captions and playback until the configured pause confirms the turn. Resumed speech cancels the pending result. An utterance gets at most one early attempt. Turns with remote context adaptation or competing work use the normal path.
+Click prepares eligible local turns of up to eight seconds after the first quarter second of detected quiet. It retains the same audio used by the normal turn path and holds captions and playback until the configured pause confirms the turn. Resumed speech cancels the pending result. An utterance gets at most one early attempt. Turns with remote context adaptation or competing work use the normal path.
 
 ## Browser timing
 
