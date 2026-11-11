@@ -62,7 +62,7 @@
         const answerAudioEndpoint = new URL("gradio_api/call/live_answer_audio", document.baseURI);
         const canExplain = panel.querySelector(".say-assistant")?.hidden === false;
         const bandNames = {lower: "lower pitch", higher: "higher pitch"};
-        let session, cancelProfile;
+        let session, cancelProfile, lastTranslation = "";
         let profileSample = "", profileRecording = false;
 
         const ORB_STATES = {ready: "idle", listening: "listening", waiting: "listening",
@@ -409,6 +409,62 @@
             });
         }
 
+        function paintCommand(result) {
+            const reply = result.command || {};
+            const [from] = direction(session || {languages: {}}, result);
+            captionEmpty.hidden = true;
+            captionLines.hidden = false;
+            control("caption-translated").hidden = false;
+            control("caption-original").hidden = !result.transcript;
+            control("caption-source-label").textContent = "You asked";
+            control("caption-target-label").textContent = `Click · answer`;
+            setText(control("caption-source"), result.transcript || "", from?.tag || "en");
+            setText(control("caption-target"), reply.answer || reply.error || "", from?.tag || "en");
+            control("caption-explained").hidden = true;
+            control("caption-cue-group").hidden = true;
+            const error = control("caption-error");
+            error.textContent = "";
+            error.hidden = true;
+            captionState.textContent = "Answer";
+            captionScreen.scrollTop = 0;
+        }
+
+        function appendCommand(result, current, turn) {
+            const reply = result.command || {};
+            const item = document.createElement("li");
+            item.className = "say-turn say-turn-command";
+            item.dataset.turn = turn;
+            const [from] = direction(current, result);
+            voiceNote(item, `You asked Click`);
+            const asked = document.createElement("span");
+            asked.className = "say-turn-source";
+            setText(asked, result.transcript || "", from.tag);
+            const answered = document.createElement("strong");
+            answered.className = "say-turn-target";
+            setText(answered, reply.answer || reply.error || "", from.tag);
+            item.append(asked, answered);
+            if (reply.glossary?.length) {
+                const glossary = document.createElement("ul");
+                glossary.className = "say-glossary";
+                glossary.setAttribute("role", "list");
+                fillGlossary(glossary, reply.glossary, from.tag);
+                item.append(glossary);
+            }
+            if (reply.sources?.length) {
+                const sources = document.createElement("ul");
+                sources.className = "say-sources";
+                sources.setAttribute("role", "list");
+                sources.replaceChildren(...reply.sources.map(sourceLink));
+                item.append(sources);
+            }
+            empty.hidden = true;
+            const later = [...history.children].find(other => Number(other.dataset.turn) > turn);
+            history.insertBefore(item, later || null);
+            history.scrollTop = history.scrollHeight;
+            if (history.children.length > 20) history.firstElementChild.remove();
+            return item;
+        }
+
         function append(result, current, turn) {
             const item = document.createElement("li");
             item.className = "say-turn";
@@ -494,6 +550,12 @@
         async function translateTurn(current, {chunks, turn, options, prepared}) {
             let item, audio;
             const showText = result => {
+                if (result.command) {
+                    item ||= appendCommand(result, current, turn);
+                    if (captionToggle.checked) paintCommand(result);
+                    return;
+                }
+                if (result.translation) lastTranslation = result.translation;
                 item ||= append(result, current, turn);
                 showCaption(current, turn, result, false);
             };
@@ -555,7 +617,8 @@
             return {two_way: current.twoWay, tone: control("tone").value,
                 relationship: control("relationship").value, situation: control("situation").value,
                 remote: control("remote")?.checked || false, profile_language: current.profileLanguage,
-                level: level.value, voice_range: voiceRange.value};
+                level: level.value, voice_range: voiceRange.value,
+                last_translation: (lastTranslation || "").slice(0, 3000)};
         }
 
         function prepareTurn(current) {

@@ -228,6 +228,20 @@ On macOS the app reads the installed voices with `say -v '?'` and takes the firs
 
 Absolute pitch is read in exactly one function and is deliberately excluded from the emotion feature vector, which keeps using clip-relative pitch only. The published voice model and its held-out evaluation are therefore unchanged. A regression test asserts that two recordings an octave apart produce the same classifier features while reporting pitches 110 Hz apart.
 
+## Ask Click out loud
+
+Opening a turn with the app's name makes it a request to Click rather than speech to translate. Say **"Hey Click, look up what the current policy is in Uganda"** and the answer comes back in the language you asked in, spoken aloud and written in the captions with its sources. Say **"Hey Click, explain that in simpler terms"** and it restates the previous turn.
+
+Recognition is deliberately narrow, because a false positive silently swallows a sentence the speaker wanted translated. The name has to fall in the first three words of the turn, optionally after a greeting, and the name alone with nothing asked is not a command. Common mishearings of the name are accepted, since a recognizer rarely returns it spelled as intended. "Please click the button" is left alone.
+
+| Engine | Needs | Lookup | Explain at another level |
+| --- | --- | --- | --- |
+| **Wikipedia summaries** | nothing | the encyclopedia passage itself, translated into your language by the local translator | unavailable |
+| **Local model** | [Ollama](https://ollama.com) and one pulled model | a summarized answer grounded in those passages | yes |
+| **Claude** | `ANTHROPIC_API_KEY` | a live web search | yes, and most accurately |
+
+The first row is the default and costs nothing: Wikipedia's API needs no account, no key and no quota, and the app falls back to it whenever no model is present. It answers with the passage rather than a summary of it, because there is no model there to summarize with, and it is good for how a place, an institution or a procedure generally works and poor for prices, opening times and this week's news.
+
 ## Explain at another level
 
 A direct translation can be accurate and still not land, because the speaker used terminology, phrasing, or a register the listener does not share. **Explanation level** restates an accepted translation for a different listener:

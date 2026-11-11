@@ -161,3 +161,5 @@
 @media (prefers-reduced-motion: reduce) {
   .say-orb-ring { animation: none !important; transition: opacity 240ms ease; transform: none !important; }
 }
+.say-turn-command { background: #eef4fb; border-left: 3px solid #14508c; }
+.say-turn-command .say-turn-target { font-size: 15px; }

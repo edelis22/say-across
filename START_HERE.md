@@ -53,6 +53,10 @@ python3.11 start.py
 
 The launcher installs the client for you when it sees the key. Open **Understanding help** in the app to choose an explanation level, or to ask a question and then repeat the answer in another language or hear it read aloud. Both send text to Anthropic and are informational only. Run `python3.11 app.py --no-assistant` to keep them off while the key is still set. [Anthropic API keys](https://platform.claude.com/settings/keys)
 
+## Ask Click out loud
+
+Start a turn with the app's name and it answers instead of translating. Try **"Hey Click, look up what the current policy is in Uganda"**, or **"Hey Click, explain that in simpler terms"** right after a turn you did not follow. Looking things up works with nothing installed, from Wikipedia. Explaining in simpler words needs the free Ollama model above.
+
 ## Work with someone else
 
 Send them the source ZIP or the GitHub repository. Each computer gets its own local app and conversation history. For a public walkthrough or shared HTTPS microphone app, follow the [publishing guide](PUBLISH.md). The [private hosting guide](HOSTING.md) covers password-protected review.

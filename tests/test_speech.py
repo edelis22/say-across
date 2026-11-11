@@ -508,16 +508,22 @@ class AssistantFeatureTests(TestCase):
 
 @skipUnless(importlib.util.find_spec("gradio"), "Install Gradio for assistant UI tests.")
 class AssistantDisabledTests(TestCase):
-    def test_without_a_credential_the_features_are_absent_rather_than_broken(self):
+    def test_without_a_credential_lookup_still_works_from_the_encyclopedia(self):
+        """Wikipedia needs nothing installed, so the free tier is always there."""
         from app import build_app
+        from pragmatics.local_assistant import ReferenceAssistant
 
         with patch("app.speech_available", return_value=True), patch("app.WhisperTranscriber"), \
-                patch("app.NLLB"), patch("app.assistant_available", return_value=False):
+                patch("app.NLLB"), patch("app.assistant_available", return_value=False), \
+                patch("app.local_assistant_available", return_value=False):
             ui = build_app(allow_remote=False)
         names = {fn.api_name for fn in ui.fns.values()}
-        self.assertNotIn("live_lookup", names)
-        self.assertNotIn("restate", names)
+        self.assertIn("live_lookup", names)
         self.assertIn("live_phrase", names)
+        # Restating genuinely needs a model, and says so rather than failing oddly.
+        with self.assertRaises(Exception) as caught:
+            ReferenceAssistant().simplify(translation="x", language="eng_Latn", level="plain")
+        self.assertEqual(str(caught.exception), "needs_local_model")
 
     def test_the_features_can_be_switched_off_even_with_a_credential_present(self):
         """Covers --no-assistant and a hosted deployment that has not opted in."""

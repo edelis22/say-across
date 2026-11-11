@@ -16,8 +16,9 @@ from pragmatics.assistant import (
     validate_simplification,
 )
 from pragmatics.captions import caption_cues
+from pragmatics.commands import parse_command
 from pragmatics.config import EXPLANATION_LEVELS, LANGUAGES, RELATIONSHIPS, TONES, VOICE_RANGES
-from pragmatics.local_assistant import LocalAssistant, local_assistant_available
+from pragmatics.local_assistant import LocalAssistant, ReferenceAssistant, local_assistant_available
 from pragmatics.demo import DemoAdapter, DemoTranslator, SOURCE, TARGETS
 from pragmatics.emotion import EmotionDetector
 from pragmatics.interpreter import (
@@ -84,6 +85,9 @@ ASSISTANT_MESSAGES = {
     "local_model_missing": "No local model is installed. Run: ollama pull qwen2.5:7b",
     "no_reference_found": "No reference passage was found for that question. Try rewording it.",
     "research_unreachable": "Could not reach the reference source. Check the connection.",
+    "needs_local_model": "Simpler wording needs a local model. Install Ollama, then run: "
+                         "ollama pull qwen2.5:7b",
+    "nothing_to_explain": "Say something first, then ask Click to explain it.",
 }
 
 
@@ -127,7 +131,8 @@ def resolve_assistant(allow_assistant, demo):
         return ClaudeAssistant()
     if local_assistant_available():
         return LocalAssistant()
-    return None
+    # Nothing to install: lookups still work from the open encyclopedia.
+    return ReferenceAssistant()
 
 
 def _lookup_message(reason):
@@ -233,7 +238,8 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
         except AssistantError as error:
             return "", {"status": "unavailable", "reason": str(error)}, []
         return answer["answer"], {"status": "answered", "searched": answer["searched"],
-                                 "response_model": model}, answer["sources"]
+                                 "response_model": model,
+                                 "answer_wiki": answer.get("answer_wiki")}, answer["sources"]
 
     def say_answer_in(answer, language):
         """Repeat an answer already given, in another language."""
@@ -268,6 +274,33 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
         except SpeechError as error:
             return {"error": str(error)}
         return {"audio": wav_base64(audio)}
+
+    def run_command(intent, query, language, situation="", last_translation=""):
+        """Answer a turn addressed to Click, in the language the speaker used."""
+        if intent == "simplify":
+            if not (last_translation or "").strip():
+                return {"intent": intent, "error": _lookup_message("nothing_to_explain")}
+            detail = explain(last_translation, language, "plain", situation=situation)
+            if detail is None or "error" in (detail or {}):
+                return {"intent": intent,
+                        "error": _lookup_message((detail or {}).get("error", "assistant_unavailable"))}
+            return {"intent": intent, "answer": detail["rendered"], "sources": [],
+                    "glossary": detail["glossary"]}
+        answer, detail, sources = look_up(query, language, "", situation)
+        if not answer:
+            return {"intent": "lookup", "error": _lookup_message(detail.get("reason", ""))}
+        # A reference passage can come from another language's encyclopedia, so
+        # bring it into the speaker's language with the local translator.
+        wiki = detail.get("answer_wiki")
+        spoken = LANGUAGES[language][1]
+        if wiki and wiki != spoken:
+            source = next((code for code, (_, tag, _) in LANGUAGES.items() if tag == wiki), None)
+            if source:
+                try:
+                    answer = translator.translate_turn(answer, source, language)
+                except (ImportError, OSError, RuntimeError, ValueError):
+                    pass
+        return {"intent": "lookup", "answer": answer, "sources": sources, "glossary": []}
 
     def live_lookup(question, language, place="", situation=""):
         answer, detail, sources = look_up(question, language, place, situation)
@@ -420,6 +453,25 @@ def build_app(demo=False, device="cpu", detect_emotion=True, allow_remote=True, 
             return
         asr_done = perf_counter()
         direction = {"source_language": src, "target_language": tgt}
+        # A turn addressed to Click is a request to the app, not speech to translate.
+        command = parse_command(transcript) if assistant is not None else None
+        if command:
+            intent, query = command
+            reply = run_command(intent, query, src, settings.situation, settings.last_translation)
+            spoken, notice = reply.get("answer", ""), ""
+            audio = None
+            if spoken and voice_mode != "captions" and (system_voice or mac_voice):
+                try:
+                    audio = (mac_voice.synthesize(spoken[:1000], src) if mac_voice
+                             else speak(spoken[:1000], src))
+                except SpeechError as error:
+                    notice = str(error)
+            yield {**direction, "transcript": transcript, "stage": "ready", "command": reply,
+                   "translation": "", "voice_mode": voice_mode, "playback_error": notice,
+                   "audio": wav_base64(audio) if audio is not None else "",
+                   "timings_ms": {"recognition": round((asr_done - started) * 1000),
+                                  "voice_ready": round((perf_counter() - started) * 1000)}}
+            return
         try:
             reviewed = reviewed_spoken_translation(transcript, src, tgt)
             if reviewed:

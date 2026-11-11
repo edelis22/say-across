@@ -92,5 +92,6 @@ def _passages(payload, host):
             "title": title,
             "url": f"https://{host}/wiki/{title.replace(' ', '_')}",
             "extract": extract[:MAX_EXTRACT_CHARS],
+            "wiki": host.split(".", 1)[0],
         }))
     return [passage for _, passage in sorted(passages, key=lambda item: item[0])][:RESULT_LIMIT]

@@ -66,12 +66,13 @@ class InterpreterSettings:
     profile_language: str = ""
     level: str = "as_spoken"
     voice_range: str = "auto"
+    last_translation: str = ""
 
     @classmethod
     def parse(cls, payload):
         if not payload:
             return cls()
-        if len(payload) > 4096:
+        if len(payload) > 8192:
             raise ValueError("Conversation settings are too long.")
         try:
             settings = cls(**json.loads(payload))
@@ -84,6 +85,7 @@ class InterpreterSettings:
                 or (settings.profile_language and settings.profile_language not in LANGUAGES)
                 or type(settings.level) is not str or settings.level not in EXPLANATION_LEVELS
                 or type(settings.voice_range) is not str or settings.voice_range not in VOICE_RANGES
+                or type(settings.last_translation) is not str or len(settings.last_translation) > 3000
                 or settings.relationship not in RELATIONSHIPS):
             raise ValueError("Invalid conversation settings.")
         return settings

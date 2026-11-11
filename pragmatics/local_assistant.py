@@ -210,3 +210,42 @@ class LocalAssistant:
             "language": LANGUAGES[language][0],
         }
         return self._chat(SAY_IN_PROMPT, json.dumps(fields, ensure_ascii=False))
+
+
+class ReferenceAssistant:
+    """The free tier that needs nothing installed at all.
+
+    It answers a lookup with the encyclopedia passage itself rather than a
+    summary of it, because there is no model here to summarize with. Restating
+    at another level genuinely needs a model, so that call reports it.
+    """
+
+    label = "Wikipedia summaries"
+
+    def __init__(self, searcher=None):
+        self._search = searcher
+
+    def look_up(self, *, question, language, place="", situation=""):
+        if language not in LANGUAGES:
+            raise AssistantError("unsupported_language")
+        question = validate_request(question, limit=MAX_PASSAGE_CHARS, field="question")
+        place = optional_text(place, MAX_SITUATION_CHARS)
+        try:
+            passages = (self._search or search)(f"{question} {place}".strip(), language)
+        except ResearchError:
+            raise AssistantError("research_unreachable") from None
+        if not passages:
+            raise AssistantError("no_reference_found")
+        best = passages[0]
+        answer = f"{best['title']}: {best['extract']}"
+        return {"answer": answer,
+                "sources": [{"url": item["url"], "title": item["title"]} for item in passages],
+                "searched": True,
+                # The passage may be from another language's Wikipedia.
+                "answer_wiki": best.get("wiki", "en")}, "wikipedia"
+
+    def simplify(self, **_fields):
+        raise AssistantError("needs_local_model")
+
+    def say_in(self, **_fields):
+        raise AssistantError("needs_local_model")
