@@ -6,7 +6,10 @@
   "portsAttributes": {
     "7860": { "label": "Click", "onAutoForward": "openBrowser" }
   },
-  "hostRequirements": { "cpus": 4, "memory": "8gb", "storage": "32gb" },
+  // The smallest Codespaces machine, which is the cheapest in core-hours and
+  // the one a free personal account is offered. Translation is slower on it
+  // but fits: asking for more would force a larger, faster-billing machine.
+  "hostRequirements": { "cpus": 2, "memory": "8gb", "storage": "32gb" },
   "customizations": {
     "vscode": {
       "extensions": ["ms-python.python"],

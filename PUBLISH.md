@@ -12,7 +12,7 @@ GitHub Pages serves the walkthrough, including sample captions and browser voice
 
 A Codespace runs the app on GitHub's machines, so nothing is installed locally and the checkout is always the branch you picked. `.devcontainer/` pins Python 3.11, installs eSpeak NG and ffmpeg, and builds the environment on creation.
 
-1. On the repository page, choose the branch you want, then **Code → Codespaces → Create codespace on that branch**. Setup takes a few minutes the first time.
+1. On the repository page, choose the branch you want, then **Code → Codespaces → Create codespace on that branch**, or go to [github.com/codespaces/new](https://github.com/codespaces/new) and set the repository and branch there. **Check the branch**: the default branch does not carry a feature branch's work, and a Codespace created from it will not even read this configuration. The 2-core machine is enough and is the cheapest in core-hours; a larger one spends the monthly allowance proportionally faster. Setup takes a few minutes the first time.
 2. When the terminal is ready, start the app.
 
    ```sh
